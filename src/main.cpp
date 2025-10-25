@@ -166,6 +166,8 @@ void setup()
   Serial.setDebugOutput(true);
   Serial.println();
 
+  Serial.printf("Запуск настройки");
+
   // Инициализация камеры
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
