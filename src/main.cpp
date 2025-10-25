@@ -118,6 +118,8 @@
 #include "esp_camera.h"
 #include <WiFi.h>
 
+#define FLASH_GPIO_NUM 4
+
 // ======= Настройки камеры (ESP32-CAM AI Thinker) =======
 #define PWDN_GPIO_NUM 32
 #define RESET_GPIO_NUM -1
@@ -145,6 +147,7 @@ const char *ssid = "CAR-DETECTOR";
 const char *password = "";
 
 
+
 // ======= Порог и зона анализа =======
 const int REGION_WIDTH = 100;           // ширина зоны анализа в центре
 const int REGION_HEIGHT = 80;           // высота зоны анализа
@@ -156,6 +159,9 @@ void startCameraServer();
 
 void setup()
 {
+  pinMode(FLASH_GPIO_NUM, OUTPUT);
+  digitalWrite(FLASH_GPIO_NUM, LOW);
+
   Serial.begin(115200);
   Serial.setDebugOutput(true);
   Serial.println();
@@ -254,6 +260,11 @@ void loop()
   if (lastAverage != 0 && diff > DETECTION_THRESHOLD)
   {
     Serial.printf("🚗 Автомобиль (или объект) обнаружен! Изменение = %.2f\n", diff);
+
+    digitalWrite(FLASH_GPIO_NUM, HIGH);
+    delay(5000);
+    digitalWrite(FLASH_GPIO_NUM, LOW);
+    delay(5000);
   }
   else
   {
