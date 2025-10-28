@@ -149,11 +149,20 @@ const char *password = "";
 
 
 // ======= Порог и зона анализа =======
-const int REGION_WIDTH = 100;           // ширина зоны анализа в центре
-const int REGION_HEIGHT = 80;           // высота зоны анализа
-const float DETECTION_THRESHOLD = 15.0; // порог изменения яркости
+const int REGION_WIDTH = 50;//160;//100;            // ширина зоны анализа в центре
+const int REGION_HEIGHT = 40;//120;//80;           // высота зоны анализа
 
+const float DETECTION_THRESHOLD = 15.0; // порог изменения яркости обнаружения авто
+const float UNDETCT_THRESHOLD = 10.0;    // порог изменения яркости уезда авто
+
+//float minAverage = 0;
 float lastAverage = 0;
+float fixedAverage = 0;
+
+bool carDetected = false;
+
+
+
 
 void startCameraServer();
 
@@ -163,10 +172,9 @@ void setup()
   digitalWrite(FLASH_GPIO_NUM, LOW);
 
   Serial.begin(115200);
-  Serial.setDebugOutput(true);
-  Serial.println();
 
-  Serial.printf("Запуск настройки");
+
+  // Serial.println("Запуск настройки");
 
   // Инициализация камеры
   camera_config_t config;
@@ -224,57 +232,122 @@ void setup()
   Serial.println("' to connect");
 }
 
+float avgGray = 0;
+
 void loop()
 {
-  camera_fb_t *fb = esp_camera_fb_get();
-  if (!fb)
+  for(int x = 0; x < 5; x++)
   {
-    Serial.println("Ошибка получения кадра");
-    delay(1000);
-    return;
-  }
-
-  // Размер кадра
-  int width = 160;
-  int height = 120;
-
-  // Центрируем прямоугольник
-  int x0 = (width - REGION_WIDTH) / 2;
-  int y0 = (height - REGION_HEIGHT) / 2;
-
-  // Подсчёт среднего серого в центре
-  unsigned long sum = 0;
-  int count = 0;
-
-  for (int y = y0; y < y0 + REGION_HEIGHT; y++)
-  {
-    for (int x = x0; x < x0 + REGION_WIDTH; x++)
+    camera_fb_t *fb = esp_camera_fb_get();
+    if (!fb)
     {
-      int i = y * width + x;
-      sum += fb->buf[i];
-      count++;
+      Serial.println("Ошибка получения кадра");
+      delay(1000);
+      return;
+    }
+  
+    // Размер кадра
+    int width = 160;
+    int height = 120;
+  
+    // Центрируем прямоугольник
+    int x0 = (width - REGION_WIDTH) / 2;
+    int y0 = (height - REGION_HEIGHT) / 2;
+  
+    // Подсчёт среднего серого в центре
+    unsigned long sum = 0;
+    int count = 0;
+  
+    for (int y = y0; y < y0 + REGION_HEIGHT; y++)
+    {
+      for (int x = x0; x < x0 + REGION_WIDTH; x++)
+      {
+        int i = y * width + x;
+        sum += fb->buf[i];
+        count++;
+      }
+    }
+  
+    avgGray += (float)sum / count;       // Текущий баланск сеерого в центре кадра
+  
+    esp_camera_fb_return(fb);
+  }
+  
+  avgGray /= 5;
+
+
+  /*
+  if(carDetected)
+  {   
+    if(avgGray > fixedAverage)
+    {
+      fixedAverage = avgGray;
+    }
+
+    // float diff = (avgGray - fixedAverage);  // Разница между обнаруженным и текущим
+    float diff = (avgGray - fixedAverage);  // Разница между обнаруженным и текущим
+
+    if(diff > 0)
+    {
+      if (fixedAverage != 0 && diff > UNDETCT_THRESHOLD)
+      {
+        Serial.printf("🚗 Автомобиль в зоне действия! Изменение = %.2f\n", diff);
+        //fixedAverage = avgGray;
+      }
+      else
+      {
+        Serial.printf("Нет авто. Текущее изменение = %.2f\n", diff);
+        carDetected = false;
+        //fixedAverage = avgGray;
+      
+        //digitalWrite(FLASH_GPIO_NUM, LOW);
+        //delay(500);
+      }  
+
+      if(diff <= 6) 
+      {
+        carDetected = false;
+        fixedAverage = avgGray;
+      }
     }
   }
-
-  float avgGray = (float)sum / count;
-  float diff = abs(avgGray - lastAverage);
-
-  if (lastAverage != 0 && diff > DETECTION_THRESHOLD)
-  {
-    Serial.printf("🚗 Автомобиль (или объект) обнаружен! Изменение = %.2f\n", diff);
-
-    digitalWrite(FLASH_GPIO_NUM, HIGH);
-    delay(5000);
-    digitalWrite(FLASH_GPIO_NUM, LOW);
-    delay(5000);
-  }
   else
-  {
-    Serial.printf("Нет авто. Текущее изменение = %.2f\n", diff);
+  */
+  {   
+    // float diff = (avgGray - lastAverage);  // Разница между предыдущим и текущим
+    float diff = abs(avgGray - lastAverage);  // Разница между предыдущим и текущим
+
+    if (lastAverage != 0 && diff > DETECTION_THRESHOLD)
+    {
+      Serial.printf("🚗 Автомобиль обнаружен! Изменение = %.2f, текущее значение = %.2f\n", diff,avgGray);
+
+      fixedAverage = avgGray;
+      carDetected = true;
+
+      //digitalWrite(FLASH_GPIO_NUM, HIGH);
+      //delay(5000);
+    }
+    else
+    {
+      Serial.printf("Нет авто. Текущее изменение = %.2f, текущее значение = %.2f\n", diff, avgGray);
+      carDetected = false;
+      fixedAverage = avgGray;
+    }
+
+    lastAverage = avgGray;
   }
 
-  lastAverage = avgGray;
+  //lastAverage = avgGray;
+  //
+  //if(lastAverage < minAverage)
+  //{
+  //  minAverage = avgGray;
+  //}  
 
-  esp_camera_fb_return(fb);
-  delay(1000); // Снимать 1 раз в секунду
+  // if(!carDetected) Serial.printf("Текущее lastAverage = %.2f", lastAverage);
+
+  avgGray = 0;
+  
+  //esp_camera_fb_return(fb);
+  //delay(10); // Снимать 1 раз в секунду
 }
