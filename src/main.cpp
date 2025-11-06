@@ -7,12 +7,12 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
-// Настройки камеры для AI-Thinker ESP32-CAM
 #define PWDN_GPIO_NUM 32
 #define RESET_GPIO_NUM -1
 #define XCLK_GPIO_NUM 0
 #define SIOD_GPIO_NUM 26
 #define SIOC_GPIO_NUM 27
+
 #define Y9_GPIO_NUM 35
 #define Y8_GPIO_NUM 34
 #define Y7_GPIO_NUM 39
@@ -43,13 +43,15 @@ struct Settings
 };
 
 Settings settings;
+
 bool sd_initialized = false;
 bool camera_initialized = false;
+
 WebServer server(80);
 
 // Прототипы функций
 void webServerTask(void *parameter);
-void cameraDetectionTask();
+void carDetection();
 void setupCamera();
 void setupSDCard();
 void loadSettings();
@@ -64,6 +66,8 @@ void updateROICoordinates();
 void setup()
 {
   Serial.begin(115200);
+
+  delay(3000);
 
   // Инициализация камеры и SD карты
   setupCamera();
@@ -178,167 +182,158 @@ void webServerTask(void *parameter)
   }
 }
 
-void cameraDetectionTask()
+void carDetection()
 {
-  // while (true)
-  // {
+  digitalWrite(4, LOW);
 
-    
-    // Захват кадра для детекции (низкое качество)
-    camera_fb_t *fb = esp_camera_fb_get();
+  camera_fb_t *fb = esp_camera_fb_get();
 
-    if (fb)
+  if (fb)
+  {
+    bool car_detected = false;
+
+    // // Анализ только если кадр в градациях серого
+    // if (fb->format == PIXFORMAT_GRAYSCALE) {
+    //   uint8_t* grayImage = fb->buf;
+
+    //   // Анализ ROI области
+    //   int darkPixels = 0;
+    //   int totalPixels = settings.roi_width * settings.roi_height;
+
+    //   // Проверяем границы ROI
+    //   int max_y = min(settings.roi_y + settings.roi_height, fb->height);
+    //   int max_x = min(settings.roi_x + settings.roi_width, fb->width);
+
+    //   for (int y = settings.roi_y; y < max_y; y++) {
+    //     for (int x = settings.roi_x; x < max_x; x++) {
+    //       int idx = y * fb->width + x;
+    //       if (grayImage[idx] < settings.threshold) {
+    //         darkPixels++;
+    //       }
+    //     }
+    //   }
+
+    // Анализ только если кадр в градациях серого
+    if (fb->format == PIXFORMAT_GRAYSCALE)
     {
-      bool car_detected = false;
+      uint8_t *grayImage = fb->buf;
 
-      // // Анализ только если кадр в градациях серого
-      // if (fb->format == PIXFORMAT_GRAYSCALE) {
-      //   uint8_t* grayImage = fb->buf;
+      // Анализ ROI области
+      int darkPixels = 0;
+      int totalPixels = settings.roi_width * settings.roi_height;
 
-      //   // Анализ ROI области
-      //   int darkPixels = 0;
-      //   int totalPixels = settings.roi_width * settings.roi_height;
-
-      //   // Проверяем границы ROI
-      //   int max_y = min(settings.roi_y + settings.roi_height, fb->height);
-      //   int max_x = min(settings.roi_x + settings.roi_width, fb->width);
-
-      //   for (int y = settings.roi_y; y < max_y; y++) {
-      //     for (int x = settings.roi_x; x < max_x; x++) {
-      //       int idx = y * fb->width + x;
-      //       if (grayImage[idx] < settings.threshold) {
-      //         darkPixels++;
-      //       }
-      //     }
-      //   }
-
-      // Анализ только если кадр в градациях серого
-      if (fb->format == PIXFORMAT_GRAYSCALE)
+      for (int y = settings.roi_y; y < settings.roi_y + settings.roi_height; y++)
       {
-        uint8_t *grayImage = fb->buf;
-
-        // Анализ ROI области
-        int darkPixels = 0;
-        int totalPixels = settings.roi_width * settings.roi_height;
-
-        for (int y = settings.roi_y; y < settings.roi_y + settings.roi_height; y++)
+        for (int x = settings.roi_x; x < settings.roi_x + settings.roi_width; x++)
         {
-          for (int x = settings.roi_x; x < settings.roi_x + settings.roi_width; x++)
+          int idx = y * fb->width + x;
+          if (grayImage[idx] < settings.threshold)
           {
-            int idx = y * fb->width + x;
-            if (grayImage[idx] < settings.threshold)
-            {
-              darkPixels++;
-            }
+            darkPixels++;
           }
         }
+      }
 
-        float darkRatio = (float)darkPixels / totalPixels;
+      float darkRatio = (float)darkPixels / totalPixels;
 
-        // Простая проверка условий
-        if (darkRatio > settings.dark_min && darkRatio < settings.dark_max)
+      // Простая проверка условий
+      if (darkRatio > settings.dark_min && darkRatio < settings.dark_max)
+      {
+        if (darkPixels > settings.area)
         {
-          if (darkPixels > settings.area)
+          car_detected = true;
+          Serial.printf("Car detected! Dark pixels: %d, ratio: %.2f\n", darkPixels, darkRatio);
+        }
+        else
+        {
+          Serial.printf("Car not detected! Dark pixels: %d, ratio: %.2f\n", darkPixels, darkRatio);
+        }
+      }
+      else
+      {
+        Serial.printf("Car not detected 2! Dark pixels: %d, ratio: %.2f\n", darkPixels, darkRatio);
+      }
+    }
+
+    esp_camera_fb_return(fb);
+
+    // Если обнаружена машина - делаем качественный снимок
+    if (car_detected)
+    {
+      Serial.println("Taking high quality photo...");
+
+      delay(250);
+      
+      sensor_t *s = esp_camera_sensor_get();
+
+      s->set_framesize(s, FRAMESIZE_VGA);
+      s->set_pixformat(s, PIXFORMAT_JPEG);
+
+      // s->set_quality(s, 12); // Высокое качество (меньше число = лучше качество)
+
+      // Даем камере время на перестройку
+      delay(1500);
+
+      camera_fb_t *hi_res_fb = esp_camera_fb_get();
+
+      if (hi_res_fb)
+      {
+        Serial.printf("Captured high-res frame: %zu bytes, format: %d\n", hi_res_fb->len, hi_res_fb->format);
+
+        if (hi_res_fb->format == PIXFORMAT_JPEG && hi_res_fb->len > 0)
+        {
+          if (sd_initialized)
           {
-            car_detected = true;
-            Serial.printf("Car detected! Dark pixels: %d, ratio: %.2f\n", darkPixels, darkRatio);
-          }
-          else
-          {
-            Serial.printf("Car not detected! Dark pixels: %d, ratio: %.2f\n", darkPixels, darkRatio);
+            // Генерируем имя файла с временной меткой
+            String filename = "/car_" + String(millis()) + ".jpg";
+            if (savePhotoToSD(filename.c_str(), hi_res_fb))
+            {
+              delay(250);
+              Serial.println("Photo saved successfully: " + filename);
+            }
+            else
+            {
+              Serial.println("Failed to save photo");
+            }
           }
         }
         else
         {
-          Serial.printf("Car not detected 2! Dark pixels: %d, ratio: %.2f\n", darkPixels, darkRatio);
+          Serial.println("Invalid frame format or empty frame");
         }
+        esp_camera_fb_return(hi_res_fb);
       }
-
-      esp_camera_fb_return(fb);
-
-      // Если обнаружена машина - делаем качественный снимок
-      if (car_detected)
+      else
       {
-        Serial.println("Taking high quality photo...");
-
-        delay(250);
-
-        // Переключаем на высокое качество с задержкой для стабилизации
-        sensor_t *s = esp_camera_sensor_get();
-
-        // Устанавливаем высокое качество - используем JPEG формат
-        if (s->set_framesize(s, FRAMESIZE_SVGA) != ESP_OK)
-        {
-          Serial.println("Failed to set frame size");
-        }
-
-        if (s->set_pixformat(s, PIXFORMAT_JPEG) != ESP_OK)
-        {
-          Serial.println("Failed to set pixel format to JPEG");
-        }
-
-        s->set_quality(s, 12); // Высокое качество (меньше число = лучше качество)
-
-        // Даем камере время на перестройку
-        delay(1500);
-
-        camera_fb_t *hi_res_fb = esp_camera_fb_get();
-
-        if (hi_res_fb)
-        {
-          Serial.printf("Captured high-res frame: %zu bytes, format: %d\n", hi_res_fb->len, hi_res_fb->format);
-
-          if (hi_res_fb->format == PIXFORMAT_JPEG && hi_res_fb->len > 0)
-          {
-            if (sd_initialized)
-            {
-              // Генерируем имя файла с временной меткой
-              String filename = "/car_" + String(millis()) + ".jpg";
-              if (savePhotoToSD(filename.c_str(), hi_res_fb))
-              {
-                Serial.println("Photo saved successfully: " + filename);
-              }
-              else
-              {
-                Serial.println("Failed to save photo");
-              }
-            }
-          }
-          else
-          {
-            Serial.println("Invalid frame format or empty frame");
-          }
-          esp_camera_fb_return(hi_res_fb);
-        }
-        else
-        {
-          Serial.println("High resolution camera capture failed");
-        }
-
-        delay(250);
-
-        // Возвращаем настройки для детекции
-        if (s->set_framesize(s, FRAMESIZE_QQVGA) != ESP_OK)
-        {
-          Serial.println("Failed to set frame size back to QQVGA");
-        }
-
-        if (s->set_pixformat(s, PIXFORMAT_GRAYSCALE) != ESP_OK)
-        {
-          Serial.println("Failed to set pixel format back to grayscale");
-        }
-
-        s->set_quality(s, 10); // Высокое качество (меньше число = лучше качество)
-
-        delay(1500);
+        Serial.println("High resolution camera capture failed");
       }
-    }
-    else
-    {
-      Serial.println("Camera capture failed");
 
-      // ESP.restart();
+      delay(250);
+      
+      s->set_framesize(s, FRAMESIZE_QQVGA);
+      s->set_pixformat(s, PIXFORMAT_GRAYSCALE);
+
+      delay(1500);
     }
+  }
+  else
+  {
+    Serial.println("Camera capture failed");
+
+
+    // s->set_framesize(s, FRAMESIZE_QQVGA);
+    // s->set_pixformat(s, PIXFORMAT_GRAYSCALE);
+
+    // delay(1500);
+
+    // digitalWrite(PWDN_GPIO_NUM, !digitalRead(PWDN_GPIO_NUM));
+    // delay(50);
+    // digitalWrite(PWDN_GPIO_NUM, !digitalRead(PWDN_GPIO_NUM));
+
+    // setupCamera();
+
+    // s->set_quality(s, 12); // Высокое качество (меньше число = лучше качество)
+  }
 
   // }
 }
@@ -411,59 +406,65 @@ void setupCamera()
   config.pin_sscb_scl = SIOC_GPIO_NUM;
   config.pin_pwdn = PWDN_GPIO_NUM;
   config.pin_reset = RESET_GPIO_NUM;
-  config.xclk_freq_hz = 20000000;
-  config.pixel_format = PIXFORMAT_GRAYSCALE; // Градации серого для детекции
-  config.frame_size = FRAMESIZE_QQVGA; // 160x120 для скорости
-  config.jpeg_quality = 10;
-  config.fb_count = 1;
+  config.xclk_freq_hz = 10000000;
+  config.pixel_format = PIXFORMAT_JPEG;
 
-  esp_err_t err = esp_camera_init(&config);
-
-  if (err == ESP_OK)
+  if(psramFound())
   {
-    camera_initialized = true;
-    Serial.println("Camera initialized successfully");
-
-    delay(1500);
-
-    // Дополнительная настройка сенсора
-    sensor_t *s = esp_camera_sensor_get();
-    if (s != NULL)
-    {
-      // Настройки для лучшего качества
-      s->set_brightness(s, 0);                 // -2 to 2
-      s->set_contrast(s, 0);                   // -2 to 2
-      s->set_saturation(s, 0);                 // -2 to 2
-      s->set_special_effect(s, 0);             // 0 to 6 (0 - No Effect)
-      s->set_whitebal(s, 1);                   // 0 = disable , 1 = enable
-      s->set_awb_gain(s, 1);                   // 0 = disable , 1 = enable
-      s->set_wb_mode(s, 0);                    // 0 to 4 - if awb_gain enabled (0 - Auto)
-      s->set_exposure_ctrl(s, 1);              // 0 = disable , 1 = enable
-      s->set_aec2(s, 0);                       // 0 = disable , 1 = enable
-      s->set_ae_level(s, 0);                   // -2 to 2
-      s->set_aec_value(s, 300);                // 0 to 1200
-      s->set_gain_ctrl(s, 1);                  // 0 = disable , 1 = enable
-      s->set_agc_gain(s, 0);                   // 0 to 30
-      s->set_gainceiling(s, (gainceiling_t)0); // 0 to 6
-      s->set_bpc(s, 0);                        // 0 = disable , 1 = enable
-      s->set_wpc(s, 1);                        // 0 = disable , 1 = enable
-      s->set_raw_gma(s, 1);                    // 0 = disable , 1 = enable
-      s->set_lenc(s, 1);                       // 0 = disable , 1 = enable
-      s->set_hmirror(s, 0);                    // 0 = disable , 1 = enable
-      s->set_vflip(s, 0);                      // 0 = disable , 1 = enable
-      s->set_dcw(s, 1);                        // 0 = disable , 1 = enable
-      s->set_colorbar(s, 0);                   // 0 = disable , 1 = enable
-
-      // s->set_framesize(s, FRAMESIZE_QQVGA);
-      // s->set_pixformat(s, PIXFORMAT_GRAYSCALE);
-    }
+    config.frame_size = FRAMESIZE_VGA;
+    config.jpeg_quality = 10;
+    config.fb_count = 2;
+  } 
+  else 
+  {
+    config.frame_size = FRAMESIZE_QVGA;
+    config.jpeg_quality = 12;
+    config.fb_count = 1;
   }
-  else
+
+  // camera init
+  esp_err_t err = esp_camera_init(&config);
+  if (err != ESP_OK)
   {
     Serial.printf("Camera init failed with error 0x%x", err);
+    return;
   }
 
-  delay(1500);
+  sensor_t *s = esp_camera_sensor_get();
+
+  s->set_framesize(s, FRAMESIZE_QQVGA);
+  s->set_pixformat(s, PIXFORMAT_GRAYSCALE);
+
+  // // // // // Дополнительная настройка сенсора
+  // // // // sensor_t *s = esp_camera_sensor_get();
+  // // // // if (s != NULL)
+  // // // // {
+  // // // //   // Настройки для лучшего качества
+  // // // //   s->set_brightness(s, 0);                 // -2 to 2
+  // // // //   s->set_contrast(s, 0);                   // -2 to 2
+  // // // //   s->set_saturation(s, 0);                 // -2 to 2
+  // // // //   s->set_special_effect(s, 0);             // 0 to 6 (0 - No Effect)
+  // // // //   s->set_whitebal(s, 1);                   // 0 = disable , 1 = enable
+  // // // //   s->set_awb_gain(s, 1);                   // 0 = disable , 1 = enable
+  // // // //   s->set_wb_mode(s, 0);                    // 0 to 4 - if awb_gain enabled (0 - Auto)
+  // // // //   s->set_exposure_ctrl(s, 1);              // 0 = disable , 1 = enable
+  // // // //   s->set_aec2(s, 0);                       // 0 = disable , 1 = enable
+  // // // //   s->set_ae_level(s, 0);                   // -2 to 2
+  // // // //   s->set_aec_value(s, 300);                // 0 to 1200
+  // // // //   s->set_gain_ctrl(s, 1);                  // 0 = disable , 1 = enable
+  // // // //   s->set_agc_gain(s, 0);                   // 0 to 30
+  // // // //   s->set_gainceiling(s, (gainceiling_t)0); // 0 to 6
+  // // // //   s->set_bpc(s, 0);                        // 0 = disable , 1 = enable
+  // // // //   s->set_wpc(s, 1);                        // 0 = disable , 1 = enable
+  // // // //   s->set_raw_gma(s, 1);                    // 0 = disable , 1 = enable
+  // // // //   s->set_lenc(s, 1);                       // 0 = disable , 1 = enable
+  // // // //   s->set_hmirror(s, 0);                    // 0 = disable , 1 = enable
+  // // // //   s->set_vflip(s, 0);                      // 0 = disable , 1 = enable
+  // // // //   s->set_dcw(s, 1);                        // 0 = disable , 1 = enable
+  // // // //   s->set_colorbar(s, 0);                   // 0 = disable , 1 = enable
+
+  // // // //   // s->set_framesize(s, FRAMESIZE_QQVGA);
+  // // // //   // s->set_pixformat(s, PIXFORMAT_GRAYSCALE);
 }
 
 void setupSDCard()
@@ -913,7 +914,7 @@ String getROISettingsPage()
 
 void loop()
 {
-  cameraDetectionTask();
+  carDetection();
   // Основной цикл не используется - все задачи в FreeRTOS
-  vTaskDelay(1000 / portTICK_PERIOD_MS); // Проверка каждую секунду
+  delay(1000); // Проверка каждую секунду
 }
