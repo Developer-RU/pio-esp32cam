@@ -193,8 +193,9 @@ void carDetection()
     bool car_detected = false;
 
     // // Анализ только если кадр в градациях серого
-    // if (fb->format == PIXFORMAT_GRAYSCALE) {
-    //   uint8_t* grayImage = fb->buf;
+    // if (fb->format == PIXFORMAT_GRAYSCALE)
+    // {
+    //   uint8_t *grayImage = fb->buf;
 
     //   // Анализ ROI области
     //   int darkPixels = 0;
@@ -204,14 +205,18 @@ void carDetection()
     //   int max_y = min(settings.roi_y + settings.roi_height, fb->height);
     //   int max_x = min(settings.roi_x + settings.roi_width, fb->width);
 
-    //   for (int y = settings.roi_y; y < max_y; y++) {
-    //     for (int x = settings.roi_x; x < max_x; x++) {
+    //   for (int y = settings.roi_y; y < max_y; y++)
+    //   {
+    //     for (int x = settings.roi_x; x < max_x; x++)
+    //     {
     //       int idx = y * fb->width + x;
-    //       if (grayImage[idx] < settings.threshold) {
+    //       if (grayImage[idx] < settings.threshold)
+    //       {
     //         darkPixels++;
     //       }
     //     }
     //   }
+    // }
 
     // Анализ только если кадр в градациях серого
     if (fb->format == PIXFORMAT_GRAYSCALE)
@@ -263,7 +268,7 @@ void carDetection()
       Serial.println("Taking high quality photo...");
 
       delay(250);
-      
+
       sensor_t *s = esp_camera_sensor_get();
 
       s->set_framesize(s, FRAMESIZE_VGA);
@@ -309,7 +314,7 @@ void carDetection()
       }
 
       delay(250);
-      
+
       s->set_framesize(s, FRAMESIZE_QQVGA);
       s->set_pixformat(s, PIXFORMAT_GRAYSCALE);
 
@@ -319,7 +324,6 @@ void carDetection()
   else
   {
     Serial.println("Camera capture failed");
-
 
     // s->set_framesize(s, FRAMESIZE_QQVGA);
     // s->set_pixformat(s, PIXFORMAT_GRAYSCALE);
@@ -409,13 +413,13 @@ void setupCamera()
   config.xclk_freq_hz = 10000000;
   config.pixel_format = PIXFORMAT_JPEG;
 
-  if(psramFound())
+  if (psramFound())
   {
     config.frame_size = FRAMESIZE_VGA;
     config.jpeg_quality = 10;
     config.fb_count = 2;
-  } 
-  else 
+  }
+  else
   {
     config.frame_size = FRAMESIZE_QVGA;
     config.jpeg_quality = 12;
