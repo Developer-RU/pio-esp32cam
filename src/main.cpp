@@ -1,11 +1,16 @@
+#include "Arduino.h"
+
 #include "esp_camera.h"
 #include "FS.h"
 #include "SD_MMC.h"
 #include <WiFi.h>
 #include <WebServer.h>
 #include <ArduinoJson.h>
+#include <Preferences.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+
+#define FLASH_GPIO_NUM 4
 
 #define PWDN_GPIO_NUM 32
 #define RESET_GPIO_NUM -1
@@ -44,6 +49,10 @@ struct Settings
 
 Settings settings;
 
+Preferences preferences;
+
+int photoNumber = 0;
+
 bool sd_initialized = false;
 bool camera_initialized = false;
 
@@ -52,16 +61,24 @@ WebServer server(80);
 // Прототипы функций
 void webServerTask(void *parameter);
 void carDetection();
+void setupPreferences();
+void onFlash();
+void offFlash();
+void setupFlash();
 void setupCamera();
 void setupSDCard();
+void loadPreferences();
+void savePreferences();
 void loadSettings();
 void saveSettings();
-bool savePhotoToSD(const char *filename, camera_fb_t *fb);
+void updateROICoordinates();
+bool savePhotoToSD(const char *filename, camera_fb_t *fb, DynamicJsonDocument doc);
+
 String getMainPage();
 String getDetectionSettingsPage();
 String getWifiSettingsPage();
 String getROISettingsPage();
-void updateROICoordinates();
+
 
 void setup()
 {
@@ -69,7 +86,9 @@ void setup()
 
   delay(3000);
 
-  // Инициализация камеры и SD карты
+  // Инициализация preferences, камеры и SD карты
+  setupFlash();
+  setupPreferences();
   setupCamera();
   setupSDCard();
   loadSettings();
@@ -92,15 +111,6 @@ void setup()
       1,
       NULL,
       0);
-
-  // xTaskCreatePinnedToCore(
-  //     cameraDetectionTask,
-  //     "Camera Detection",
-  //     4096,
-  //     NULL,
-  //     2,
-  //     NULL,
-  //     1);
 
   Serial.println("System started");
 }
@@ -218,14 +228,18 @@ void carDetection()
     //   }
     // }
 
+      int darkPixels = 0;
+      int totalPixels = 0;
+      float darkRatio = 0;
+
     // Анализ только если кадр в градациях серого
     if (fb->format == PIXFORMAT_GRAYSCALE)
     {
       uint8_t *grayImage = fb->buf;
 
       // Анализ ROI области
-      int darkPixels = 0;
-      int totalPixels = settings.roi_width * settings.roi_height;
+      darkPixels = 0;
+      totalPixels = settings.roi_width * settings.roi_height;
 
       for (int y = settings.roi_y; y < settings.roi_y + settings.roi_height; y++)
       {
@@ -239,7 +253,7 @@ void carDetection()
         }
       }
 
-      float darkRatio = (float)darkPixels / totalPixels;
+      darkRatio = (float)darkPixels / totalPixels;
 
       // Простая проверка условий
       if (darkRatio > settings.dark_min && darkRatio < settings.dark_max)
@@ -267,7 +281,10 @@ void carDetection()
     {
       Serial.println("Taking high quality photo...");
 
-      delay(250);
+      onFlash();
+      delay(1000);
+      offFlash();
+      delay(200);
 
       sensor_t *s = esp_camera_sensor_get();
 
@@ -289,12 +306,32 @@ void carDetection()
         {
           if (sd_initialized)
           {
+            String num = (String)photoNumber;
+            while (num.length() < 5)
+              num = "0" + num;
+
             // Генерируем имя файла с временной меткой
-            String filename = "/car_" + String(millis()) + ".jpg";
-            if (savePhotoToSD(filename.c_str(), hi_res_fb))
+            String filename = "/car_" + num;
+
+            DynamicJsonDocument doc(1024);
+
+            doc["id"] = num;
+            doc["image"] = filename + "jpg";
+
+            doc["totalPixels"] = totalPixels;
+            doc["darkPixels"] = darkPixels;
+            doc["whitePixels"] = totalPixels - darkPixels;
+            doc["darkRatio"] = darkRatio;
+
+            doc["lastDistance"] = 0;
+            doc["currDistance"] = 0;
+
+
+            if (savePhotoToSD(filename.c_str(), hi_res_fb, doc))
             {
-              delay(250);
               Serial.println("Photo saved successfully: " + filename);
+              savePreferences();
+              delay(250);
             }
             else
             {
@@ -324,25 +361,10 @@ void carDetection()
   else
   {
     Serial.println("Camera capture failed");
-
-    // s->set_framesize(s, FRAMESIZE_QQVGA);
-    // s->set_pixformat(s, PIXFORMAT_GRAYSCALE);
-
-    // delay(1500);
-
-    // digitalWrite(PWDN_GPIO_NUM, !digitalRead(PWDN_GPIO_NUM));
-    // delay(50);
-    // digitalWrite(PWDN_GPIO_NUM, !digitalRead(PWDN_GPIO_NUM));
-
-    // setupCamera();
-
-    // s->set_quality(s, 12); // Высокое качество (меньше число = лучше качество)
   }
-
-  // }
 }
 
-bool savePhotoToSD(const char *filename, camera_fb_t *fb)
+bool savePhotoToSD(const char *filename, camera_fb_t *fb, DynamicJsonDocument doc)
 {
   if (!sd_initialized || !fb || fb->format != PIXFORMAT_JPEG)
   {
@@ -350,17 +372,21 @@ bool savePhotoToSD(const char *filename, camera_fb_t *fb)
     return false;
   }
 
-  Serial.printf("Saving photo: %s, size: %zu bytes\n", filename, fb->len);
 
-  File file = SD_MMC.open(filename, FILE_WRITE);
-  if (!file)
+
+  String pathPhoto = (String)filename + ".jpg";
+
+  Serial.printf("Saving photo: %s, size: %zu bytes\n", pathPhoto.c_str(), fb->len);
+
+  File filePhoto = SD_MMC.open(pathPhoto.c_str(), FILE_WRITE);
+  if (!filePhoto)
   {
     Serial.println("Failed to open file for writing");
     return false;
   }
 
-  size_t written = file.write(fb->buf, fb->len);
-  file.close();
+  size_t written = filePhoto.write(fb->buf, fb->len);
+  filePhoto.close();
 
   if (written != fb->len)
   {
@@ -369,15 +395,15 @@ bool savePhotoToSD(const char *filename, camera_fb_t *fb)
   }
 
   // Проверяем, что файл создан и имеет правильный размер
-  file = SD_MMC.open(filename, FILE_READ);
-  if (!file)
+  filePhoto = SD_MMC.open(pathPhoto, FILE_READ);
+  if (!filePhoto)
   {
     Serial.println("Cannot verify saved file");
     return false;
   }
 
-  size_t fileSize = file.size();
-  file.close();
+  size_t fileSize = filePhoto.size();
+  filePhoto.close();
 
   if (fileSize != fb->len)
   {
@@ -386,7 +412,72 @@ bool savePhotoToSD(const char *filename, camera_fb_t *fb)
   }
 
   Serial.printf("Photo saved successfully: %s (%zu bytes)\n", filename, fileSize);
-  return true;
+
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+  String pathData = (String)filename + ".json";
+
+  Serial.printf("Saving data: %s\n", pathData.c_str());
+
+  File fileData = SD_MMC.open(pathData.c_str(), FILE_WRITE);
+  if (!fileData)
+  {
+    Serial.println("Failed to open file for writing");
+    return false;
+  }
+
+
+
+
+
+
+
+
+  // DynamicJsonDocument doc(1024);
+
+  // doc["threshold"] = settings.threshold;
+  // doc["area"] = settings.area;
+  // doc["dark_min"] = settings.dark_min;
+
+  bool res = false;
+
+  if (serializeJson(doc, fileData) == 0)
+  {
+    Serial.println("Failed to write data");
+    res = false;
+  }
+  else
+  {
+    Serial.println("Settings saved data");
+    res = true;
+  }
+
+  fileData.close();
+
+  Serial.printf("Data saved successfully: %s (%zu bytes)\n", pathData, fileSize);
+
+  return res;
+}
+
+void onFlash()
+{
+  digitalWrite(FLASH_GPIO_NUM, HIGH);
+}
+
+void offFlash()
+{
+  digitalWrite(FLASH_GPIO_NUM, LOW);
+}
+
+void setupFlash()
+{
+  pinMode(FLASH_GPIO_NUM, OUTPUT);
+  digitalWrite(FLASH_GPIO_NUM, LOW);
+}
+
+void setupPreferences()
+{
+  loadPreferences();
 }
 
 void setupCamera()
@@ -514,6 +605,30 @@ void setupSDCard()
   Serial.println("SD Card initialized successfully");
 }
 
+void loadPreferences()
+{
+  preferences.begin("data", false);
+
+  photoNumber = preferences.getInt("number", 1);
+  // String storedString = preferences.getString("myString", "Default");
+  // bool storedFlag = preferences.getBool("myFlag", false);
+
+  // preferences.end();
+}
+
+void savePreferences()
+{
+  // preferences.begin("data", true);
+
+  photoNumber += 1;
+
+  preferences.putInt("number", photoNumber);
+  // preferences.putString("myString", "Hello ESP32");
+  // preferences.putBool("myFlag", true);
+
+  // preferences.end();
+}
+
 void loadSettings()
 {
   if (!sd_initialized)
@@ -609,6 +724,14 @@ void updateROICoordinates()
                 settings.roi_x, settings.roi_y, settings.roi_width, settings.roi_height);
 }
 
+// <div class="nav">
+//     <a href="/">Main</a>
+//     <a href="/detection">Detection Settings</a>
+//     <a href="/wifi">WiFi Settings</a>
+//     <a href="/roi">ROI Settings</a>
+//     <a href="/list_photos">View Photos</a>
+// </div>
+
 // HTML страницы
 String getMainPage()
 {
@@ -623,7 +746,7 @@ String getMainPage()
         .nav { background: white; padding: 15px; border-radius: 10px; margin-bottom: 20px; }
         .nav a { margin: 0 15px; text-decoration: none; color: #333; font-weight: bold; }
         .card { background: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; }
-        .btn { background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; }
+        .btn { width: 100%; padding: 8px; margin: 5px 0;                 background: #007bff; color: white; border: 1px solid #ddd; border-radius: 5px; cursor: pointer; }
         input, select { width: 100%; padding: 8px; margin: 5px 0; border: 1px solid #ddd; border-radius: 5px; }
         .status { padding: 10px; border-radius: 5px; margin: 5px 0; }
         .status-ok { background: #d4edda; color: #155724; }
@@ -631,12 +754,15 @@ String getMainPage()
     </style>
 </head>
 <body>
-    <div class="nav">
-        <a href="/">Main</a>
-        <a href="/detection">Detection Settings</a>
-        <a href="/wifi">WiFi Settings</a>
-        <a href="/roi">ROI Settings</a>
-        <a href="/list_photos">View Photos</a>
+    
+    <div class="card">
+        <h3>Quick Navigation</h3>
+
+        <button class="btn" onclick="location.href='/'">Home Page</button><br>
+        <button class="btn" onclick="location.href='/detection'">Detection Settings</button><br>
+        <button class="btn" onclick="location.href='/wifi'">WiFi Settings</button><br>
+        <button class="btn" onclick="location.href='/roi'">ROI Settings</button><br>
+        <button class="btn" onclick="location.href='/list_photos'">Photos info</button>
     </div>
     
     <div class="card">
@@ -657,17 +783,19 @@ String getMainPage()
                 String(WiFi.softAPgetStationNum()) + R"rawliteral(</p>
     </div>
     
-    <div class="card">
-        <h3>Quick Actions</h3>
-        <button class="btn" onclick="location.href='/detection'">Adjust Sensitivity</button>
-        <button class="btn" onclick="location.href='/roi'">Configure Detection Area</button>
-        <button class="btn" onclick="location.href='/list_photos'">View Saved Photos</button>
-    </div>
+   
 </body>
 </html>
 )rawliteral";
   return html;
 }
+
+//  <div class="card">
+//         <h3>Quick Actions</h3>
+//         <button class="btn" onclick="location.href='/detection'">Adjust Sensitivity</button>
+//         <button class="btn" onclick="location.href='/roi'">Configure Detection Area</button>
+//         <button class="btn" onclick="location.href='/list_photos'">View Saved Photos</button>
+//     </div>
 
 String getDetectionSettingsPage()
 {
@@ -675,26 +803,30 @@ String getDetectionSettingsPage()
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Detection Settings</title>
+    <title>Car Detector</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body { font-family: Arial; margin: 20px; background: #f0f0f0; }
         .nav { background: white; padding: 15px; border-radius: 10px; margin-bottom: 20px; }
         .nav a { margin: 0 15px; text-decoration: none; color: #333; font-weight: bold; }
         .card { background: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; }
-        .btn { background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; margin: 5px; }
+        .btn { width: 100%; padding: 8px; margin: 5px 0;                 background: #007bff; color: white; border: 1px solid #ddd; border-radius: 5px; cursor: pointer; }
         input, select { width: 100%; padding: 8px; margin: 5px 0; border: 1px solid #ddd; border-radius: 5px; }
-        .slider { width: 100%; }
-        .value-display { font-weight: bold; color: #007bff; }
+        .status { padding: 10px; border-radius: 5px; margin: 5px 0; }
+        .status-ok { background: #d4edda; color: #155724; }
+        .status-error { background: #f8d7da; color: #721c24; }
     </style>
 </head>
 <body>
-    <div class="nav">
-        <a href="/">Main</a>
-        <a href="/detection">Detection Settings</a>
-        <a href="/wifi">WiFi Settings</a>
-        <a href="/roi">ROI Settings</a>
-        <a href="/list_photos">View Photos</a>
+    
+    <div class="card">
+        <h3>Quick Navigation</h3>
+
+        <button class="btn" onclick="location.href='/'">Home Page</button><br>
+        <button class="btn" onclick="location.href='/detection'">Detection Settings</button><br>
+        <button class="btn" onclick="location.href='/wifi'">WiFi Settings</button><br>
+        <button class="btn" onclick="location.href='/roi'">ROI Settings</button><br>
+        <button class="btn" onclick="location.href='/list_photos'">Photos info</button>
     </div>
     
     <div class="card">
@@ -769,24 +901,30 @@ String getWifiSettingsPage()
 <!DOCTYPE html>
 <html>
 <head>
-    <title>WiFi Settings</title>
+    <title>Car Detector</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body { font-family: Arial; margin: 20px; background: #f0f0f0; }
         .nav { background: white; padding: 15px; border-radius: 10px; margin-bottom: 20px; }
         .nav a { margin: 0 15px; text-decoration: none; color: #333; font-weight: bold; }
         .card { background: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; }
-        .btn { background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; }
+        .btn { width: 100%; padding: 8px; margin: 5px 0;                 background: #007bff; color: white; border: 1px solid #ddd; border-radius: 5px; cursor: pointer; }
         input, select { width: 100%; padding: 8px; margin: 5px 0; border: 1px solid #ddd; border-radius: 5px; }
+        .status { padding: 10px; border-radius: 5px; margin: 5px 0; }
+        .status-ok { background: #d4edda; color: #155724; }
+        .status-error { background: #f8d7da; color: #721c24; }
     </style>
 </head>
 <body>
-    <div class="nav">
-        <a href="/">Main</a>
-        <a href="/detection">Detection Settings</a>
-        <a href="/wifi">WiFi Settings</a>
-        <a href="/roi">ROI Settings</a>
-        <a href="/list_photos">View Photos</a>
+    
+    <div class="card">
+        <h3>Quick Navigation</h3>
+
+        <button class="btn" onclick="location.href='/'">Home Page</button><br>
+        <button class="btn" onclick="location.href='/detection'">Detection Settings</button><br>
+        <button class="btn" onclick="location.href='/wifi'">WiFi Settings</button><br>
+        <button class="btn" onclick="location.href='/roi'">ROI Settings</button><br>
+        <button class="btn" onclick="location.href='/list_photos'">Photos info</button>
     </div>
     
     <div class="card">
@@ -841,24 +979,30 @@ String getROISettingsPage()
 <!DOCTYPE html>
 <html>
 <head>
-    <title>ROI Settings</title>
+    <title>Car Detector</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body { font-family: Arial; margin: 20px; background: #f0f0f0; }
         .nav { background: white; padding: 15px; border-radius: 10px; margin-bottom: 20px; }
         .nav a { margin: 0 15px; text-decoration: none; color: #333; font-weight: bold; }
         .card { background: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; }
-        .btn { background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; }
+        .btn { width: 100%; padding: 8px; margin: 5px 0;                 background: #007bff; color: white; border: 1px solid #ddd; border-radius: 5px; cursor: pointer; }
         input, select { width: 100%; padding: 8px; margin: 5px 0; border: 1px solid #ddd; border-radius: 5px; }
+        .status { padding: 10px; border-radius: 5px; margin: 5px 0; }
+        .status-ok { background: #d4edda; color: #155724; }
+        .status-error { background: #f8d7da; color: #721c24; }
     </style>
 </head>
 <body>
-    <div class="nav">
-        <a href="/">Main</a>
-        <a href="/detection">Detection Settings</a>
-        <a href="/wifi">WiFi Settings</a>
-        <a href="/roi">ROI Settings</a>
-        <a href="/list_photos">View Photos</a>
+    
+    <div class="card">
+        <h3>Quick Navigation</h3>
+
+        <button class="btn" onclick="location.href='/'">Home Page</button><br>
+        <button class="btn" onclick="location.href='/detection'">Detection Settings</button><br>
+        <button class="btn" onclick="location.href='/wifi'">WiFi Settings</button><br>
+        <button class="btn" onclick="location.href='/roi'">ROI Settings</button><br>
+        <button class="btn" onclick="location.href='/list_photos'">Photos info</button>
     </div>
     
     <div class="card">
