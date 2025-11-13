@@ -202,35 +202,9 @@ void carDetection()
   {
     bool car_detected = false;
 
-    // // Анализ только если кадр в градациях серого
-    // if (fb->format == PIXFORMAT_GRAYSCALE)
-    // {
-    //   uint8_t *grayImage = fb->buf;
-
-    //   // Анализ ROI области
-    //   int darkPixels = 0;
-    //   int totalPixels = settings.roi_width * settings.roi_height;
-
-    //   // Проверяем границы ROI
-    //   int max_y = min(settings.roi_y + settings.roi_height, fb->height);
-    //   int max_x = min(settings.roi_x + settings.roi_width, fb->width);
-
-    //   for (int y = settings.roi_y; y < max_y; y++)
-    //   {
-    //     for (int x = settings.roi_x; x < max_x; x++)
-    //     {
-    //       int idx = y * fb->width + x;
-    //       if (grayImage[idx] < settings.threshold)
-    //       {
-    //         darkPixels++;
-    //       }
-    //     }
-    //   }
-    // }
-
-      int darkPixels = 0;
-      int totalPixels = 0;
-      float darkRatio = 0;
+    int darkPixels = 0;
+    int totalPixels = 0;
+    float darkRatio = 0;
 
     // Анализ только если кадр в градациях серого
     if (fb->format == PIXFORMAT_GRAYSCALE)
@@ -291,8 +265,6 @@ void carDetection()
       s->set_framesize(s, FRAMESIZE_VGA);
       s->set_pixformat(s, PIXFORMAT_JPEG);
 
-      // s->set_quality(s, 12); // Высокое качество (меньше число = лучше качество)
-
       // Даем камере время на перестройку
       delay(1500);
 
@@ -317,12 +289,10 @@ void carDetection()
 
             doc["id"] = num;
             doc["image"] = filename + "jpg";
-
             doc["totalPixels"] = totalPixels;
             doc["darkPixels"] = darkPixels;
             doc["whitePixels"] = totalPixels - darkPixels;
             doc["darkRatio"] = darkRatio;
-
             doc["lastDistance"] = 0;
             doc["currDistance"] = 0;
 
@@ -425,19 +395,6 @@ bool savePhotoToSD(const char *filename, camera_fb_t *fb, DynamicJsonDocument do
     Serial.println("Failed to open file for writing");
     return false;
   }
-
-
-
-
-
-
-
-
-  // DynamicJsonDocument doc(1024);
-
-  // doc["threshold"] = settings.threshold;
-  // doc["area"] = settings.area;
-  // doc["dark_min"] = settings.dark_min;
 
   bool res = false;
 
@@ -724,14 +681,6 @@ void updateROICoordinates()
                 settings.roi_x, settings.roi_y, settings.roi_width, settings.roi_height);
 }
 
-// <div class="nav">
-//     <a href="/">Main</a>
-//     <a href="/detection">Detection Settings</a>
-//     <a href="/wifi">WiFi Settings</a>
-//     <a href="/roi">ROI Settings</a>
-//     <a href="/list_photos">View Photos</a>
-// </div>
-
 // HTML страницы
 String getMainPage()
 {
@@ -789,13 +738,6 @@ String getMainPage()
 )rawliteral";
   return html;
 }
-
-//  <div class="card">
-//         <h3>Quick Actions</h3>
-//         <button class="btn" onclick="location.href='/detection'">Adjust Sensitivity</button>
-//         <button class="btn" onclick="location.href='/roi'">Configure Detection Area</button>
-//         <button class="btn" onclick="location.href='/list_photos'">View Saved Photos</button>
-//     </div>
 
 String getDetectionSettingsPage()
 {
