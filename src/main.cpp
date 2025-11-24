@@ -1,90 +1,23 @@
-#include "Arduino.h"
-
-#include "esp_camera.h"
-#include "FS.h"
-#include "SD_MMC.h"
-#include <WiFi.h>
-#include <WebServer.h>
-#include <ArduinoJson.h>
-#include <Preferences.h>
-#include <freertos/FreeRTOS.h>
-#include <freertos/task.h>
-
-#define FLASH_GPIO_NUM 4
-
-#define PWDN_GPIO_NUM 32
-#define RESET_GPIO_NUM -1
-#define XCLK_GPIO_NUM 0
-#define SIOD_GPIO_NUM 26
-#define SIOC_GPIO_NUM 27
-
-#define Y9_GPIO_NUM 35
-#define Y8_GPIO_NUM 34
-#define Y7_GPIO_NUM 39
-#define Y6_GPIO_NUM 36
-#define Y5_GPIO_NUM 21
-#define Y4_GPIO_NUM 19
-#define Y3_GPIO_NUM 18
-#define Y2_GPIO_NUM 5
-#define VSYNC_GPIO_NUM 25
-#define HREF_GPIO_NUM 23
-#define PCLK_GPIO_NUM 22
-
-// Глобальные настройки
-struct Settings
-{
-  int threshold = 60;
-  int area = 500;
-  float dark_min = 0.2;
-  float dark_max = 0.8;
-  float texture = 500.0;
-  int max_files = 50;
-  int roi_width = 160;
-  int roi_height = 120;
-  int roi_x = 40; // Центрируем ROI по умолчанию
-  int roi_y = 30; // Центрируем ROI по умолчанию
-  String ap_ssid = "CarDetector";
-  String ap_password = "12345678";
-};
-
-Settings settings;
+#include "Main.hpp"
 
 Preferences preferences;
+WebServer server(80);
+Settings settings;
 
+int lastDistance = 0;
 int photoNumber = 0;
 
 bool sd_initialized = false;
 bool camera_initialized = false;
 
-WebServer server(80);
-
-// Прототипы функций
-void webServerTask(void *parameter);
-void carDetection();
-void setupPreferences();
-void onFlash();
-void offFlash();
-void setupFlash();
-void setupCamera();
-void setupSDCard();
-void loadPreferences();
-void savePreferences();
-void loadSettings();
-void saveSettings();
-void updateROICoordinates();
-bool savePhotoToSD(const char *filename, camera_fb_t *fb, DynamicJsonDocument doc);
-
-String getMainPage();
-String getDetectionSettingsPage();
-String getWifiSettingsPage();
-String getROISettingsPage();
-
+unsigned long timeInterval = 0;
 
 void setup()
 {
-  Serial.begin(115200);
+  Serial.begin(9600);
+  Serial2.begin(9600, SERIAL_8N1, RXD2, TXD2);
 
-  delay(3000);
+  delay(5000);
 
   // Инициализация preferences, камеры и SD карты
   setupFlash();
@@ -102,20 +35,145 @@ void setup()
   Serial.print("AP IP address: ");
   Serial.println(myIP);
 
-  // Запуск задач FreeRTOS
-  xTaskCreatePinnedToCore(
-      webServerTask,
-      "Web Server",
-      8192,
-      NULL,
-      1,
-      NULL,
-      0);
+  setupWebServer();
+
+  delay(500);
+
+  timeInterval = millis();
 
   Serial.println("System started");
 }
 
-void webServerTask(void *parameter)
+uint16_t measure()
+{
+  static int previous_valid_distance = 0;
+
+  String json = "";
+
+  if (Serial.available())
+  {
+    delay(50);
+
+    while (Serial.available())
+    {
+      char val = Serial.read();
+      json += val;
+      delay(2);
+    }
+
+    // Serial.println(json);
+
+    DynamicJsonDocument doc(2048);
+    DeserializationError error = deserializeJson(doc, json);
+
+    if (!error)
+    {
+      previous_valid_distance = doc["medium"] | 0;
+    }
+  }
+
+  previous_valid_distance /= 10;
+
+  return previous_valid_distance;
+}
+
+bool savePhotoToSD(const char *filename, camera_fb_t *fb, DynamicJsonDocument doc)
+{
+  if (!sd_initialized || !fb || fb->format != PIXFORMAT_JPEG)
+  {
+    Serial.println("Invalid parameters for photo saving");
+    return false;
+  }
+
+  String pathPhoto = (String)filename + ".jpg";
+
+  Serial.printf("Saving photo: %s, size: %zu bytes\n", pathPhoto.c_str(), fb->len);
+
+  File filePhoto = SD_MMC.open(pathPhoto.c_str(), FILE_WRITE);
+  if (!filePhoto)
+  {
+    Serial.println("Failed to open file for writing");
+    return false;
+  }
+
+  size_t written = filePhoto.write(fb->buf, fb->len);
+  filePhoto.close();
+
+  if (written != fb->len)
+  {
+    Serial.printf("Write failed: %zu of %zu bytes written\n", written, fb->len);
+    return false;
+  }
+
+  // Проверяем, что файл создан и имеет правильный размер
+  filePhoto = SD_MMC.open(pathPhoto, FILE_READ);
+  if (!filePhoto)
+  {
+    Serial.println("Cannot verify saved file");
+    return false;
+  }
+
+  size_t fileSize = filePhoto.size();
+  filePhoto.close();
+
+  if (fileSize != fb->len)
+  {
+    Serial.printf("File size mismatch: %zu vs %zu\n", fileSize, fb->len);
+    return false;
+  }
+
+  Serial.printf("Photo saved successfully: %s\n", pathPhoto.c_str());
+
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+  String pathData = (String)filename + ".json";
+
+  Serial.printf("Saving data: %s\n", pathData.c_str());
+
+  File fileData = SD_MMC.open(pathData.c_str(), FILE_WRITE);
+  if (!fileData)
+  {
+    Serial.println("Failed to open file for writing");
+    return false;
+  }
+
+  bool res = false;
+
+  if (serializeJson(doc, fileData) == 0)
+  {
+    Serial.println("Failed to write data");
+    res = false;
+  }
+  else
+  {
+    Serial.println("Settings saved data");
+    res = true;
+  }
+
+  fileData.close();
+
+  // Serial.printf("Data saved successfully: %s\n", pathData.c_str());
+
+  return res;
+}
+
+void onFlash()
+{
+  digitalWrite(FLASH_GPIO_NUM, HIGH);
+}
+
+void offFlash()
+{
+  digitalWrite(FLASH_GPIO_NUM, LOW);
+}
+
+void setupFlash()
+{
+  pinMode(FLASH_GPIO_NUM, OUTPUT);
+  digitalWrite(FLASH_GPIO_NUM, LOW);
+}
+
+void setupWebServer()
 {
   // Настройка веб-сервера
   server.on("/", HTTP_GET, []()
@@ -132,6 +190,8 @@ void webServerTask(void *parameter)
 
   server.on("/save_detection", HTTP_POST, []()
             {
+    settings.distance = server.arg("distance").toInt();
+    settings.interval = server.arg("interval").toInt();
     settings.threshold = server.arg("threshold").toInt();
     settings.area = server.arg("area").toInt();
     settings.dark_min = server.arg("dark_min").toFloat();
@@ -184,252 +244,6 @@ void webServerTask(void *parameter)
     server.send(200, "text/html", fileList); });
 
   server.begin();
-
-  while (true)
-  {
-    server.handleClient();
-    vTaskDelay(10 / portTICK_PERIOD_MS);
-  }
-}
-
-void carDetection()
-{
-  digitalWrite(4, LOW);
-
-  camera_fb_t *fb = esp_camera_fb_get();
-
-  if (fb)
-  {
-    bool car_detected = false;
-
-    int darkPixels = 0;
-    int totalPixels = 0;
-    float darkRatio = 0;
-
-    // Анализ только если кадр в градациях серого
-    if (fb->format == PIXFORMAT_GRAYSCALE)
-    {
-      uint8_t *grayImage = fb->buf;
-
-      // Анализ ROI области
-      darkPixels = 0;
-      totalPixels = settings.roi_width * settings.roi_height;
-
-      for (int y = settings.roi_y; y < settings.roi_y + settings.roi_height; y++)
-      {
-        for (int x = settings.roi_x; x < settings.roi_x + settings.roi_width; x++)
-        {
-          int idx = y * fb->width + x;
-          if (grayImage[idx] < settings.threshold)
-          {
-            darkPixels++;
-          }
-        }
-      }
-
-      darkRatio = (float)darkPixels / totalPixels;
-
-      // Простая проверка условий
-      if (darkRatio > settings.dark_min && darkRatio < settings.dark_max)
-      {
-        if (darkPixels > settings.area)
-        {
-          car_detected = true;
-          Serial.printf("Car detected! Dark pixels: %d, ratio: %.2f\n", darkPixels, darkRatio);
-        }
-        else
-        {
-          Serial.printf("Car not detected! Dark pixels: %d, ratio: %.2f\n", darkPixels, darkRatio);
-        }
-      }
-      else
-      {
-        Serial.printf("Car not detected 2! Dark pixels: %d, ratio: %.2f\n", darkPixels, darkRatio);
-      }
-    }
-
-    esp_camera_fb_return(fb);
-
-    // Если обнаружена машина - делаем качественный снимок
-    if (car_detected)
-    {
-      Serial.println("Taking high quality photo...");
-
-      onFlash();
-      delay(1000);
-      offFlash();
-      delay(200);
-
-      sensor_t *s = esp_camera_sensor_get();
-
-      s->set_framesize(s, FRAMESIZE_VGA);
-      s->set_pixformat(s, PIXFORMAT_JPEG);
-
-      // Даем камере время на перестройку
-      delay(1500);
-
-      camera_fb_t *hi_res_fb = esp_camera_fb_get();
-
-      if (hi_res_fb)
-      {
-        Serial.printf("Captured high-res frame: %zu bytes, format: %d\n", hi_res_fb->len, hi_res_fb->format);
-
-        if (hi_res_fb->format == PIXFORMAT_JPEG && hi_res_fb->len > 0)
-        {
-          if (sd_initialized)
-          {
-            String num = (String)photoNumber;
-            while (num.length() < 5)
-              num = "0" + num;
-
-            // Генерируем имя файла с временной меткой
-            String filename = "/car_" + num;
-
-            DynamicJsonDocument doc(1024);
-
-            doc["id"] = num;
-            doc["image"] = filename + "jpg";
-            doc["totalPixels"] = totalPixels;
-            doc["darkPixels"] = darkPixels;
-            doc["whitePixels"] = totalPixels - darkPixels;
-            doc["darkRatio"] = darkRatio;
-            doc["lastDistance"] = 0;
-            doc["currDistance"] = 0;
-
-
-            if (savePhotoToSD(filename.c_str(), hi_res_fb, doc))
-            {
-              Serial.println("Photo saved successfully: " + filename);
-              savePreferences();
-              delay(250);
-            }
-            else
-            {
-              Serial.println("Failed to save photo");
-            }
-          }
-        }
-        else
-        {
-          Serial.println("Invalid frame format or empty frame");
-        }
-        esp_camera_fb_return(hi_res_fb);
-      }
-      else
-      {
-        Serial.println("High resolution camera capture failed");
-      }
-
-      delay(250);
-
-      s->set_framesize(s, FRAMESIZE_QQVGA);
-      s->set_pixformat(s, PIXFORMAT_GRAYSCALE);
-
-      delay(1500);
-    }
-  }
-  else
-  {
-    Serial.println("Camera capture failed");
-  }
-}
-
-bool savePhotoToSD(const char *filename, camera_fb_t *fb, DynamicJsonDocument doc)
-{
-  if (!sd_initialized || !fb || fb->format != PIXFORMAT_JPEG)
-  {
-    Serial.println("Invalid parameters for photo saving");
-    return false;
-  }
-
-
-
-  String pathPhoto = (String)filename + ".jpg";
-
-  Serial.printf("Saving photo: %s, size: %zu bytes\n", pathPhoto.c_str(), fb->len);
-
-  File filePhoto = SD_MMC.open(pathPhoto.c_str(), FILE_WRITE);
-  if (!filePhoto)
-  {
-    Serial.println("Failed to open file for writing");
-    return false;
-  }
-
-  size_t written = filePhoto.write(fb->buf, fb->len);
-  filePhoto.close();
-
-  if (written != fb->len)
-  {
-    Serial.printf("Write failed: %zu of %zu bytes written\n", written, fb->len);
-    return false;
-  }
-
-  // Проверяем, что файл создан и имеет правильный размер
-  filePhoto = SD_MMC.open(pathPhoto, FILE_READ);
-  if (!filePhoto)
-  {
-    Serial.println("Cannot verify saved file");
-    return false;
-  }
-
-  size_t fileSize = filePhoto.size();
-  filePhoto.close();
-
-  if (fileSize != fb->len)
-  {
-    Serial.printf("File size mismatch: %zu vs %zu\n", fileSize, fb->len);
-    return false;
-  }
-
-  Serial.printf("Photo saved successfully: %s (%zu bytes)\n", filename, fileSize);
-
-  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-  String pathData = (String)filename + ".json";
-
-  Serial.printf("Saving data: %s\n", pathData.c_str());
-
-  File fileData = SD_MMC.open(pathData.c_str(), FILE_WRITE);
-  if (!fileData)
-  {
-    Serial.println("Failed to open file for writing");
-    return false;
-  }
-
-  bool res = false;
-
-  if (serializeJson(doc, fileData) == 0)
-  {
-    Serial.println("Failed to write data");
-    res = false;
-  }
-  else
-  {
-    Serial.println("Settings saved data");
-    res = true;
-  }
-
-  fileData.close();
-
-  Serial.printf("Data saved successfully: %s (%zu bytes)\n", pathData, fileSize);
-
-  return res;
-}
-
-void onFlash()
-{
-  digitalWrite(FLASH_GPIO_NUM, HIGH);
-}
-
-void offFlash()
-{
-  digitalWrite(FLASH_GPIO_NUM, LOW);
-}
-
-void setupFlash()
-{
-  pinMode(FLASH_GPIO_NUM, OUTPUT);
-  digitalWrite(FLASH_GPIO_NUM, LOW);
 }
 
 void setupPreferences()
@@ -440,6 +254,7 @@ void setupPreferences()
 void setupCamera()
 {
   camera_config_t config;
+
   config.ledc_channel = LEDC_CHANNEL_0;
   config.ledc_timer = LEDC_TIMER_0;
   config.pin_d0 = Y2_GPIO_NUM;
@@ -463,13 +278,13 @@ void setupCamera()
 
   if (psramFound())
   {
-    config.frame_size = FRAMESIZE_VGA;
+    config.frame_size = FRAMESIZE_SVGA;
     config.jpeg_quality = 10;
     config.fb_count = 2;
   }
   else
   {
-    config.frame_size = FRAMESIZE_QVGA;
+    config.frame_size = FRAMESIZE_QQVGA;
     config.jpeg_quality = 12;
     config.fb_count = 1;
   }
@@ -486,6 +301,8 @@ void setupCamera()
 
   s->set_framesize(s, FRAMESIZE_QQVGA);
   s->set_pixformat(s, PIXFORMAT_GRAYSCALE);
+
+  camera_initialized = true;
 
   // // // // // Дополнительная настройка сенсора
   // // // // sensor_t *s = esp_camera_sensor_get();
@@ -601,24 +418,27 @@ void loadSettings()
     return;
   }
 
-  DynamicJsonDocument doc(1024);
+  DynamicJsonDocument doc(2048);
   DeserializationError error = deserializeJson(doc, file);
   file.close();
 
   if (!error)
   {
-    settings.threshold = doc["threshold"] | 60;
+    settings.distance = doc["distance"] | 380;
+    settings.interval = doc["interval"] | 5000;
+    settings.threshold = doc["threshold"] | 160;
     settings.area = doc["area"] | 500;
     settings.dark_min = doc["dark_min"] | 0.2;
     settings.dark_max = doc["dark_max"] | 0.8;
     settings.texture = doc["texture"] | 500.0;
-    settings.max_files = doc["max_files"] | 50;
-    settings.roi_width = doc["roi_width"] | 160;
-    settings.roi_height = doc["roi_height"] | 120;
+    settings.max_files = doc["max_files"] | 250;
+    settings.roi_width = doc["roi_width"] | 80;
+    settings.roi_height = doc["roi_height"] | 60;
     settings.roi_x = doc["roi_x"] | 40;
     settings.roi_y = doc["roi_y"] | 30;
     settings.ap_ssid = doc["ap_ssid"] | "CarDetector";
     settings.ap_password = doc["ap_password"] | "12345678";
+
     Serial.println("Settings loaded from SD card");
   }
   else
@@ -639,7 +459,10 @@ void saveSettings()
     return;
   }
 
-  DynamicJsonDocument doc(1024);
+  DynamicJsonDocument doc(2048);
+
+  doc["distance"] = settings.distance;
+  doc["interval"] = settings.interval;
   doc["threshold"] = settings.threshold;
   doc["area"] = settings.area;
   doc["dark_min"] = settings.dark_min;
@@ -659,6 +482,8 @@ void saveSettings()
   }
   else
   {
+
+    Serial.println(doc.as<String>());
     Serial.println("Settings saved successfully");
   }
   file.close();
@@ -677,8 +502,7 @@ void updateROICoordinates()
   settings.roi_x = max(0, min(settings.roi_x, 160 - settings.roi_width));
   settings.roi_y = max(0, min(settings.roi_y, 120 - settings.roi_height));
 
-  Serial.printf("ROI configured: x=%d, y=%d, width=%d, height=%d\n",
-                settings.roi_x, settings.roi_y, settings.roi_width, settings.roi_height);
+  Serial.printf("ROI configured: x=%d, y=%d, width=%d, height=%d\n", settings.roi_x, settings.roi_y, settings.roi_width, settings.roi_height);
 }
 
 // HTML страницы
@@ -775,11 +599,22 @@ String getDetectionSettingsPage()
         <h2>Detection Sensitivity Settings</h2>
         
         <form id="detectionForm">
-            <label>Threshold (0-255):</label>
+
+            <label>Distance (0-400): <span class="value-display" id="distanceValue">)rawliteral" +
+                String(settings.distance) + R"rawliteral(</span></label>
+            <input type="range" class="slider" id="distance" min="0" max="400" value=")rawliteral" +
+                String(settings.distance) + R"rawliteral("></input><br>
+
+
+            <label>Interval detection (0-10000):</label>
+            <input type="number" id="interval" step="100" value=")rawliteral" +
+                String(settings.interval) + R"rawliteral(" min="0" max="10000">
+                
+                
+            <label>Threshold (0-255): <span class="value-display" id="thresholdValue">)rawliteral" +
+                String(settings.threshold) + R"rawliteral(</span></label>
             <input type="range" class="slider" id="threshold" min="0" max="255" value=")rawliteral" +
-                String(settings.threshold) + R"rawliteral(">
-            <span class="value-display" id="thresholdValue">)rawliteral" +
-                String(settings.threshold) + R"rawliteral(</span>
+                String(settings.threshold) + R"rawliteral("></input><br>
             
             <label>Minimum Area:</label>
             <input type="number" id="area" value=")rawliteral" +
@@ -806,12 +641,18 @@ String getDetectionSettingsPage()
     </div>
 
     <script>
+        document.getElementById('distance').oninput = function() {
+            document.getElementById('distanceValue').textContent = this.value;
+        }
+
         document.getElementById('threshold').oninput = function() {
             document.getElementById('thresholdValue').textContent = this.value;
         }
         
         async function saveSettings() {
             const formData = new FormData();
+            formData.append('distance', document.getElementById('distance').value);
+            formData.append('interval', document.getElementById('interval').value);
             formData.append('threshold', document.getElementById('threshold').value);
             formData.append('area', document.getElementById('area').value);
             formData.append('dark_min', document.getElementById('dark_min').value);
@@ -1004,7 +845,167 @@ String getROISettingsPage()
 
 void loop()
 {
-  carDetection();
-  // Основной цикл не используется - все задачи в FreeRTOS
-  delay(1000); // Проверка каждую секунду
+  lastDistance = measure();
+
+  if (WiFi.softAPgetStationNum() > 0)
+  {
+    server.handleClient();
+    delay(10);
+  }
+  else
+  {
+    if (millis() > timeInterval + settings.interval)
+    {
+      camera_fb_t *fb = esp_camera_fb_get();
+
+      if (fb)
+      {
+        bool car_detected = false;
+
+        int darkPixels = 0;
+        int totalPixels = 0;
+        float darkRatio = 0;
+
+        // Анализ только если кадр в градациях серого
+        if (fb->format == PIXFORMAT_GRAYSCALE)
+        {
+          uint8_t *grayImage = fb->buf;
+
+          // Анализ ROI области
+          darkPixels = 0;
+          totalPixels = settings.roi_width * settings.roi_height;
+
+          for (int y = settings.roi_y; y < settings.roi_y + settings.roi_height; y++)
+          {
+            for (int x = settings.roi_x; x < settings.roi_x + settings.roi_width; x++)
+            {
+              int idx = y * fb->width + x;
+              if (grayImage[idx] < settings.threshold)
+              {
+                darkPixels++;
+              }
+            }
+          }
+
+          darkRatio = (float)darkPixels / totalPixels;
+
+          // Простая проверка условий
+          if (darkRatio > settings.dark_min && darkRatio < settings.dark_max)
+          {
+
+            // здесь нужно задержаться и поизмерять в течении секунды -- расстояние - возможно авто заезжает в квадрат
+
+            //
+            //
+            //
+            //
+            //
+
+            if (darkPixels > settings.area && lastDistance != 0 && abs(lastDistance - settings.distance) > 50)
+            {
+              car_detected = true;
+              Serial.printf("Car detected! Dark pixels: %d, ratio: %.2f, distance: %d\n", darkPixels, darkRatio, lastDistance);
+            }
+            else
+            {
+              Serial.printf("Car not detected! Dark pixels: %d, ratio: %.2f, distance: %d\n", darkPixels, darkRatio, lastDistance);
+            }
+          }
+          else
+          {
+            Serial.printf("Car not detected 2! Dark pixels: %d, ratio: %.2f, distance: %d\n", darkPixels, darkRatio, lastDistance);
+          }
+        }
+
+        esp_camera_fb_return(fb);
+
+        // Если обнаружена машина - делаем качественный снимок
+        if (car_detected)
+        {
+          Serial.println("Taking high quality photo...");
+
+          onFlash();
+          vTaskDelay(1000 / portTICK_PERIOD_MS);
+          offFlash();
+          vTaskDelay(200 / portTICK_PERIOD_MS);
+
+          sensor_t *s = esp_camera_sensor_get();
+
+          s->set_framesize(s, FRAMESIZE_SVGA);
+          s->set_pixformat(s, PIXFORMAT_JPEG);
+
+          // Даем камере время на перестройку
+          vTaskDelay(1500 / portTICK_PERIOD_MS);
+
+          camera_fb_t *hi_res_fb = esp_camera_fb_get();
+
+          if (hi_res_fb)
+          {
+            Serial.printf("Captured high-res frame: %zu bytes, format: %d\n", hi_res_fb->len, hi_res_fb->format);
+
+            if (hi_res_fb->format == PIXFORMAT_JPEG && hi_res_fb->len > 0)
+            {
+              if (sd_initialized)
+              {
+                String num = (String)photoNumber;
+                while (num.length() < 5)
+                  num = "0" + num;
+
+                // Генерируем имя файла с временной меткой
+                String filename = "/car_" + num;
+
+                DynamicJsonDocument doc(1024);
+
+                doc["id"] = num;
+                doc["image"] = filename + "jpg";
+                doc["totalPixels"] = totalPixels;
+                doc["darkPixels"] = darkPixels;
+                doc["whitePixels"] = totalPixels - darkPixels;
+                doc["darkRatio"] = darkRatio;
+                doc["distance"] = lastDistance;
+
+                if (savePhotoToSD(filename.c_str(), hi_res_fb, doc))
+                {
+                  Serial.println("Photo saved successfully: " + filename);
+                  savePreferences();
+                  vTaskDelay(250 / portTICK_PERIOD_MS);
+                }
+                else
+                {
+                  Serial.println("Failed to save photo");
+                }
+              }
+            }
+            else
+            {
+              Serial.println("Invalid frame format or empty frame");
+            }
+            esp_camera_fb_return(hi_res_fb);
+          }
+          else
+          {
+            Serial.println("High resolution camera capture failed");
+          }
+
+          vTaskDelay(250 / portTICK_PERIOD_MS);
+
+          s->set_framesize(s, FRAMESIZE_QQVGA);
+          s->set_pixformat(s, PIXFORMAT_GRAYSCALE);
+
+          vTaskDelay(1500 / portTICK_PERIOD_MS);
+
+          timeInterval = millis();
+        }
+      }
+      else
+      {
+        Serial.println("Camera capture failed");
+      }
+    }
+
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
+  }
+
+  server.handleClient();
+  vTaskDelay(10 / portTICK_PERIOD_MS);
 }

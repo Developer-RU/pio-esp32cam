@@ -1,6 +1,7 @@
 {
     "files.associations": {
         "cmath": "cpp",
-        "fstream": "cpp"
+        "fstream": "cpp",
+        "iterator": "cpp"
     }
 }
