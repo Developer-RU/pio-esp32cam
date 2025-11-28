@@ -5,12 +5,15 @@ WebServer server(80);
 Settings settings;
 
 int lastDistance = 0;
+int resDistance = 0;
 int photoNumber = 0;
 
 bool sd_initialized = false;
 bool camera_initialized = false;
+bool car_detected = false;
 
 unsigned long timeInterval = 0;
+unsigned long timeblink = 0;
 
 void setup()
 {
@@ -165,6 +168,11 @@ void onFlash()
 void offFlash()
 {
   digitalWrite(FLASH_GPIO_NUM, LOW);
+}
+
+void reverseFlash()
+{
+  digitalWrite(FLASH_GPIO_NUM, !digitalRead(FLASH_GPIO_NUM));
 }
 
 void setupFlash()
@@ -847,163 +855,181 @@ void loop()
 {
   lastDistance = measure();
 
-  if (WiFi.softAPgetStationNum() > 0)
+  if (car_detected == true)
   {
-    server.handleClient();
-    delay(10);
+    if (lastDistance > resDistance + 50)
+    {
+      onFlash();
+      car_detected = false;
+    }
+    else
+    {
+      if(millis() > timeblink + 500)
+      {
+        reverseFlash();        
+        timeblink = millis();
+      }
+    }
   }
   else
   {
-    if (millis() > timeInterval + settings.interval)
+    if (WiFi.softAPgetStationNum() > 0)
     {
-      camera_fb_t *fb = esp_camera_fb_get();
-
-      if (fb)
-      {
-        bool car_detected = false;
-
-        int darkPixels = 0;
-        int totalPixels = 0;
-        float darkRatio = 0;
-
-        // Анализ только если кадр в градациях серого
-        if (fb->format == PIXFORMAT_GRAYSCALE)
-        {
-          uint8_t *grayImage = fb->buf;
-
-          // Анализ ROI области
-          darkPixels = 0;
-          totalPixels = settings.roi_width * settings.roi_height;
-
-          for (int y = settings.roi_y; y < settings.roi_y + settings.roi_height; y++)
-          {
-            for (int x = settings.roi_x; x < settings.roi_x + settings.roi_width; x++)
-            {
-              int idx = y * fb->width + x;
-              if (grayImage[idx] < settings.threshold)
-              {
-                darkPixels++;
-              }
-            }
-          }
-
-          darkRatio = (float)darkPixels / totalPixels;
-
-          // Простая проверка условий
-          if (darkRatio > settings.dark_min && darkRatio < settings.dark_max)
-          {
-
-            // здесь нужно задержаться и поизмерять в течении секунды -- расстояние - возможно авто заезжает в квадрат
-
-            //
-            //
-            //
-            //
-            //
-
-            if (darkPixels > settings.area && lastDistance != 0 && abs(lastDistance - settings.distance) > 50)
-            {
-              car_detected = true;
-              Serial.printf("Car detected! Dark pixels: %d, ratio: %.2f, distance: %d\n", darkPixels, darkRatio, lastDistance);
-            }
-            else
-            {
-              Serial.printf("Car not detected! Dark pixels: %d, ratio: %.2f, distance: %d\n", darkPixels, darkRatio, lastDistance);
-            }
-          }
-          else
-          {
-            Serial.printf("Car not detected 2! Dark pixels: %d, ratio: %.2f, distance: %d\n", darkPixels, darkRatio, lastDistance);
-          }
-        }
-
-        esp_camera_fb_return(fb);
-
-        // Если обнаружена машина - делаем качественный снимок
-        if (car_detected)
-        {
-          Serial.println("Taking high quality photo...");
-
-          onFlash();
-          vTaskDelay(1000 / portTICK_PERIOD_MS);
-          offFlash();
-          vTaskDelay(200 / portTICK_PERIOD_MS);
-
-          sensor_t *s = esp_camera_sensor_get();
-
-          s->set_framesize(s, FRAMESIZE_SVGA);
-          s->set_pixformat(s, PIXFORMAT_JPEG);
-
-          // Даем камере время на перестройку
-          vTaskDelay(1500 / portTICK_PERIOD_MS);
-
-          camera_fb_t *hi_res_fb = esp_camera_fb_get();
-
-          if (hi_res_fb)
-          {
-            Serial.printf("Captured high-res frame: %zu bytes, format: %d\n", hi_res_fb->len, hi_res_fb->format);
-
-            if (hi_res_fb->format == PIXFORMAT_JPEG && hi_res_fb->len > 0)
-            {
-              if (sd_initialized)
-              {
-                String num = (String)photoNumber;
-                while (num.length() < 5)
-                  num = "0" + num;
-
-                // Генерируем имя файла с временной меткой
-                String filename = "/car_" + num;
-
-                DynamicJsonDocument doc(1024);
-
-                doc["id"] = num;
-                doc["image"] = filename + "jpg";
-                doc["totalPixels"] = totalPixels;
-                doc["darkPixels"] = darkPixels;
-                doc["whitePixels"] = totalPixels - darkPixels;
-                doc["darkRatio"] = darkRatio;
-                doc["distance"] = lastDistance;
-
-                if (savePhotoToSD(filename.c_str(), hi_res_fb, doc))
-                {
-                  Serial.println("Photo saved successfully: " + filename);
-                  savePreferences();
-                  vTaskDelay(250 / portTICK_PERIOD_MS);
-                }
-                else
-                {
-                  Serial.println("Failed to save photo");
-                }
-              }
-            }
-            else
-            {
-              Serial.println("Invalid frame format or empty frame");
-            }
-            esp_camera_fb_return(hi_res_fb);
-          }
-          else
-          {
-            Serial.println("High resolution camera capture failed");
-          }
-
-          vTaskDelay(250 / portTICK_PERIOD_MS);
-
-          s->set_framesize(s, FRAMESIZE_QQVGA);
-          s->set_pixformat(s, PIXFORMAT_GRAYSCALE);
-
-          vTaskDelay(1500 / portTICK_PERIOD_MS);
-
-          timeInterval = millis();
-        }
-      }
-      else
-      {
-        Serial.println("Camera capture failed");
-      }
+      server.handleClient();
+      delay(10);
     }
+    else
+    {
+      if (millis() > timeInterval + settings.interval)
+      {
+        camera_fb_t *fb = esp_camera_fb_get();
 
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
+        if (fb)
+        {
+          int darkPixels = 0;
+          int totalPixels = 0;
+          float darkRatio = 0;
+
+          // Анализ только если кадр в градациях серого
+          if (fb->format == PIXFORMAT_GRAYSCALE)
+          {
+            uint8_t *grayImage = fb->buf;
+
+            // Анализ ROI области
+            darkPixels = 0;
+            totalPixels = settings.roi_width * settings.roi_height;
+
+            for (int y = settings.roi_y; y < settings.roi_y + settings.roi_height; y++)
+            {
+              for (int x = settings.roi_x; x < settings.roi_x + settings.roi_width; x++)
+              {
+                int idx = y * fb->width + x;
+                if (grayImage[idx] < settings.threshold)
+                {
+                  darkPixels++;
+                }
+              }
+            }
+
+            darkRatio = (float)darkPixels / totalPixels;
+
+            // Простая проверка условий
+            if (darkRatio > settings.dark_min && darkRatio < settings.dark_max)
+            {
+
+              // здесь нужно задержаться и поизмерять в течении секунды -- расстояние - возможно авто заезжает в квадрат
+
+              //
+              //
+              //
+              //
+              //
+
+              if (darkPixels > settings.area && lastDistance != 0 && settings.distance > lastDistance)
+              {
+                resDistance = lastDistance;
+                car_detected = true;
+                Serial.printf("Car detected! Dark pixels: %d, ratio: %.2f, distance: %d\n", darkPixels, darkRatio, lastDistance);
+              }
+              else
+              {
+                Serial.printf("Car not detected! Dark pixels: %d, ratio: %.2f, distance: %d\n", darkPixels, darkRatio, lastDistance);
+              }
+            }
+            else
+            {
+              Serial.printf("Car not detected 2! Dark pixels: %d, ratio: %.2f, distance: %d\n", darkPixels, darkRatio, lastDistance);
+            }
+          }
+
+          esp_camera_fb_return(fb);
+
+          // Если обнаружена машина - делаем качественный снимок
+          if (car_detected)
+          {
+            Serial.println("Taking high quality photo...");
+
+            onFlash();
+            vTaskDelay(500 / portTICK_PERIOD_MS);
+            offFlash();
+            vTaskDelay(200 / portTICK_PERIOD_MS);
+
+            sensor_t *s = esp_camera_sensor_get();
+
+            s->set_framesize(s, FRAMESIZE_SVGA);
+            s->set_pixformat(s, PIXFORMAT_JPEG);
+
+            // Даем камере время на перестройку
+            vTaskDelay(1500 / portTICK_PERIOD_MS);
+
+            camera_fb_t *hi_res_fb = esp_camera_fb_get();
+
+            if (hi_res_fb)
+            {
+              Serial.printf("Captured high-res frame: %zu bytes, format: %d\n", hi_res_fb->len, hi_res_fb->format);
+
+              if (hi_res_fb->format == PIXFORMAT_JPEG && hi_res_fb->len > 0)
+              {
+                if (sd_initialized)
+                {
+                  String num = (String)photoNumber;
+                  while (num.length() < 5)
+                    num = "0" + num;
+
+                  // Генерируем имя файла с временной меткой
+                  String filename = "/car_" + num;
+
+                  DynamicJsonDocument doc(1024);
+
+                  doc["id"] = num;
+                  doc["image"] = filename + "jpg";
+                  doc["totalPixels"] = totalPixels;
+                  doc["darkPixels"] = darkPixels;
+                  doc["whitePixels"] = totalPixels - darkPixels;
+                  doc["darkRatio"] = darkRatio;
+                  doc["distance"] = lastDistance;
+
+                  if (savePhotoToSD(filename.c_str(), hi_res_fb, doc))
+                  {
+                    Serial.println("Photo saved successfully: " + filename);
+                    savePreferences();
+                    vTaskDelay(250 / portTICK_PERIOD_MS);
+                  }
+                  else
+                  {
+                    Serial.println("Failed to save photo");
+                  }
+                }
+              }
+              else
+              {
+                Serial.println("Invalid frame format or empty frame");
+              }
+              esp_camera_fb_return(hi_res_fb);
+            }
+            else
+            {
+              Serial.println("High resolution camera capture failed");
+            }
+
+            vTaskDelay(250 / portTICK_PERIOD_MS);
+
+            s->set_framesize(s, FRAMESIZE_QQVGA);
+            s->set_pixformat(s, PIXFORMAT_GRAYSCALE);
+
+            vTaskDelay(1500 / portTICK_PERIOD_MS);
+
+            timeInterval = millis();
+          }
+        }
+        else
+        {
+          Serial.println("Camera capture failed");
+        }
+      }
+
+      vTaskDelay(1000 / portTICK_PERIOD_MS);
+    }
   }
 
   server.handleClient();

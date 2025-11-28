@@ -38,26 +38,29 @@
 #define HREF_GPIO_NUM 23
 #define PCLK_GPIO_NUM 22
 
-// Прототипы функций
-uint16_t measure();
-void carDetection();
-void setupPreferences();
-void onFlash();
-void offFlash();
-void setupFlash();
-void setupWebServer();
-void setupCamera();
-void setupSDCard();
-void loadPreferences();
-void savePreferences();
-void loadSettings();
-void saveSettings();
-void updateROICoordinates();
+
+uint16_t measure(void);
+
+void carDetection(void);
+void setupPreferences(void);
+void onFlash(void);
+void offFlash(void);
+void reverseFlash(void);
+void setupFlash(void);
+void setupWebServer(void);
+void setupCamera(void);
+void setupSDCard(void);
+void loadPreferences(void);
+void savePreferences(void);
+void loadSettings(void);
+void saveSettings(void);
+void updateROICoordinates(void);
+
 bool savePhotoToSD(const char *filename, camera_fb_t *fb, DynamicJsonDocument doc);
 
-String getMainPage();
-String getDetectionSettingsPage();
-String getWifiSettingsPage();
-String getROISettingsPage();
+String getMainPage(void);
+String getDetectionSettingsPage(void);
+String getWifiSettingsPage(void);
+String getROISettingsPage(void);
 
 #endif
