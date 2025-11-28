@@ -18,7 +18,6 @@ unsigned long timeblink = 0;
 void setup()
 {
   Serial.begin(9600);
-  Serial2.begin(9600, SERIAL_8N1, RXD2, TXD2);
 
   delay(5000);
 
@@ -80,7 +79,7 @@ uint16_t measure()
   return previous_valid_distance;
 }
 
-bool savePhotoToSD(const char *filename, camera_fb_t *fb, DynamicJsonDocument doc)
+bool savePhotoToSD(const char *filename, camera_fb_t *fb, const DynamicJsonDocument &doc)
 {
   if (!sd_initialized || !fb || fb->format != PIXFORMAT_JPEG)
   {
@@ -109,7 +108,7 @@ bool savePhotoToSD(const char *filename, camera_fb_t *fb, DynamicJsonDocument do
   }
 
   // Проверяем, что файл создан и имеет правильный размер
-  filePhoto = SD_MMC.open(pathPhoto, FILE_READ);
+  filePhoto = SD_MMC.open(pathPhoto.c_str(), FILE_READ);
   if (!filePhoto)
   {
     Serial.println("Cannot verify saved file");
@@ -236,6 +235,10 @@ void setupWebServer()
     String fileList = "<html><head><title>Saved Photos</title></head><body>";
     fileList += "<h2>Saved Photos:</h2><ul>";
     File root = SD_MMC.open("/");
+    if (!root) {
+      server.send(500, "text/plain", "Failed to open SD root");
+      return;
+    }
     File file = root.openNextFile();
     int count = 0;
     
@@ -244,11 +247,13 @@ void setupWebServer()
         fileList += "<li>" + String(file.name()) + " (" + String(file.size()) + " bytes)</li>";
         count++;
       }
+      file.close();
       file = root.openNextFile();
     }
     fileList += "</ul>";
     fileList += "<p><a href='/'>Back to main page</a></p>";
     fileList += "</body></html>";
+    root.close();
     server.send(200, "text/html", fileList); });
 
   server.begin();
@@ -859,7 +864,7 @@ void loop()
   {
     if (lastDistance > resDistance + 50)
     {
-      onFlash();
+      offFlash();
       car_detected = false;
     }
     else
@@ -895,14 +900,19 @@ void loop()
           {
             uint8_t *grayImage = fb->buf;
 
-            // Анализ ROI области
+            // Анализ ROI области с учётом границ кадра
             darkPixels = 0;
-            totalPixels = settings.roi_width * settings.roi_height;
+            int max_y = min(settings.roi_y + settings.roi_height, (int)fb->height);
+            int max_x = min(settings.roi_x + settings.roi_width, (int)fb->width);
+            int roi_w = max(0, max_x - settings.roi_x);
+            int roi_h = max(0, max_y - settings.roi_y);
+            totalPixels = roi_w * roi_h;
 
-            for (int y = settings.roi_y; y < settings.roi_y + settings.roi_height; y++)
+            for (int y = settings.roi_y; y < max_y; y++)
             {
-              for (int x = settings.roi_x; x < settings.roi_x + settings.roi_width; x++)
+              for (int x = settings.roi_x; x < max_x; x++)
               {
+                if (x >= fb->width || y >= fb->height) continue;
                 int idx = y * fb->width + x;
                 if (grayImage[idx] < settings.threshold)
                 {
@@ -911,7 +921,7 @@ void loop()
               }
             }
 
-            darkRatio = (float)darkPixels / totalPixels;
+            darkRatio = totalPixels > 0 ? ((float)darkPixels / totalPixels) : 0.0;
 
             // Простая проверка условий
             if (darkRatio > settings.dark_min && darkRatio < settings.dark_max)

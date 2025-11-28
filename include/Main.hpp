@@ -15,9 +15,6 @@
 
 #include "Global.hpp"
 
-#define RXD2 16
-#define TXD2 -1
-
 #define FLASH_GPIO_NUM 4
 
 #define PWDN_GPIO_NUM 32
@@ -56,7 +53,7 @@ void loadSettings(void);
 void saveSettings(void);
 void updateROICoordinates(void);
 
-bool savePhotoToSD(const char *filename, camera_fb_t *fb, DynamicJsonDocument doc);
+bool savePhotoToSD(const char *filename, camera_fb_t *fb, const DynamicJsonDocument &doc);
 
 String getMainPage(void);
 String getDetectionSettingsPage(void);
