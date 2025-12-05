@@ -60,4 +60,6 @@ String getDetectionSettingsPage(void);
 String getWifiSettingsPage(void);
 String getROISettingsPage(void);
 
+void DistanceMeterTask(void *pvParameters);
+
 #endif
