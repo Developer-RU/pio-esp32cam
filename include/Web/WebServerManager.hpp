@@ -18,5 +18,6 @@ void handleSaveDetection();
 void handleSaveWifi();
 void handleSaveROI();
 void handleListPhotos();
+void handleDeletePhoto();
 
 #endif // WEBSERVER_MANAGER_HPP

@@ -1,6 +1,6 @@
 /**
  * @file HtmlPages.cpp
- * @brief Реализация генерации HTML страниц с боковым меню
+ * @brief Реализация генерации HTML страниц
  */
 
 #include "Web/HtmlPages.hpp"
@@ -12,217 +12,159 @@ extern bool camera_initialized;
 extern bool sd_initialized;
 extern Settings settings;
 
-// Общие функции для генерации HTML
-String getHeader(const String& title) {
+/**
+ * @brief Общий шаблон с сайдбаром
+ */
+String getBaseTemplate(const String& title, const String& content)
+{
     String html = R"rawliteral(
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>)rawliteral";
+    <title>Car Detector - )rawliteral";
+    
     html += title;
-    html += R"rawliteral( - Car Detector</title>
+    html += R"rawliteral(</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8">
     <style>
-        :root {
-            --primary-color: #4361ee;
-            --secondary-color: #3a0ca3;
-            --success-color: #4cc9f0;
-            --warning-color: #f72585;
-            --dark-color: #1a1a2e;
-            --light-color: #f8f9fa;
-            --sidebar-width: 250px;
-            --border-radius: 8px;
-        }
-        
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+            font-family: 'Segoe UI', Arial, sans-serif;
         }
         
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            color: #333;
             display: flex;
+            min-height: 100vh;
+            background: #f5f7fa;
+            color: #333;
         }
         
         /* Сайдбар */
-        .sidebar {
-            width: var(--sidebar-width);
-            background-color: rgba(26, 26, 46, 0.95);
-            backdrop-filter: blur(10px);
-            padding: 20px 0;
-            height: 100vh;
+        #sidebar {
+            width: 250px;
+            background: #2c3e50;
+            color: white;
             position: fixed;
-            left: 0;
-            top: 0;
-            display: flex;
-            flex-direction: column;
-            box-shadow: 5px 0 15px rgba(0, 0, 0, 0.1);
+            height: 100vh;
+            overflow-y: auto;
+            transition: transform 0.3s ease;
             z-index: 1000;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
         }
         
         .sidebar-header {
-            padding: 0 20px 20px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            margin-bottom: 20px;
-        }
-        
-        .sidebar-header h2 {
-            color: white;
-            font-size: 1.2rem;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        
-        .sidebar-header h2 i {
-            color: var(--success-color);
-        }
-        
-        .nav-menu {
-            flex: 1;
-            overflow-y: auto;
-        }
-        
-        .nav-item {
-            padding: 12px 25px;
-            color: rgba(255, 255, 255, 0.8);
-            text-decoration: none;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            transition: all 0.3s ease;
-            border-left: 3px solid transparent;
-        }
-        
-        .nav-item:hover {
-            background-color: rgba(67, 97, 238, 0.2);
-            color: white;
-            border-left-color: var(--primary-color);
-        }
-        
-        .nav-item.active {
-            background-color: rgba(67, 97, 238, 0.3);
-            color: white;
-            border-left-color: var(--primary-color);
-        }
-        
-        .nav-item i {
-            width: 20px;
+            padding: 20px;
+            background: #1a252f;
             text-align: center;
         }
         
-        .system-status {
-            padding: 15px 25px;
-            background-color: rgba(0, 0, 0, 0.2);
-            margin: 10px 20px;
-            border-radius: var(--border-radius);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+        .sidebar-header h3 {
+            color: white;
+            font-size: 1.5rem;
         }
         
-        .status-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin: 8px 0;
-            font-size: 0.9rem;
+        .sidebar-menu {
+            padding: 20px 0;
         }
         
-        .status-label {
-            color: rgba(255, 255, 255, 0.7);
+        .sidebar-menu a {
+            display: block;
+            padding: 12px 20px;
+            color: #bdc3c7;
+            text-decoration: none;
+            border-left: 3px solid transparent;
+            transition: all 0.3s;
         }
         
-        .status-value {
-            font-weight: 600;
-            padding: 3px 8px;
-            border-radius: 4px;
-            font-size: 0.85rem;
+        .sidebar-menu a:hover {
+            background: #34495e;
+            color: white;
+            border-left: 3px solid #3498db;
         }
         
-        .status-ok {
-            background-color: rgba(76, 201, 240, 0.2);
-            color: #4cc9f0;
+        .sidebar-menu a.active {
+            background: #34495e;
+            color: white;
+            border-left: 3px solid #3498db;
         }
         
-        .status-error {
-            background-color: rgba(247, 37, 133, 0.2);
-            color: #f72585;
+        /* Кнопка меню */
+        #menu-toggle {
+            position: fixed;
+            top: 15px;
+            left: 15px;
+            background: #3498db;
+            color: white;
+            border: none;
+            width: 40px;
+            height: 40px;
+            border-radius: 5px;
+            cursor: pointer;
+            z-index: 1001;
+            display: none;
+            font-size: 20px;
         }
         
         /* Основной контент */
-        .main-content {
+        #content {
             flex: 1;
-            margin-left: var(--sidebar-width);
-            padding: 30px;
-            max-width: calc(100vw - var(--sidebar-width));
-            overflow-x: hidden;
+            margin-left: 250px;
+            padding: 20px;
+            transition: margin-left 0.3s ease;
         }
         
-        .page-header {
+        .content-header {
             background: white;
-            padding: 25px;
-            border-radius: var(--border-radius);
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
-            margin-bottom: 30px;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            margin-bottom: 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            flex-wrap: wrap;
         }
         
         .page-title {
-            color: var(--dark-color);
             font-size: 1.8rem;
+            color: #2c3e50;
         }
         
-        .page-subtitle {
-            color: #666;
-            margin-top: 5px;
-            font-size: 1rem;
-        }
-        
-        .current-ip {
-            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
-            color: white;
-            padding: 10px 20px;
-            border-radius: var(--border-radius);
+        .status-badge {
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 0.9rem;
             font-weight: 600;
         }
         
-        /* Карточки */
-        .card-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-            gap: 25px;
-            margin-bottom: 30px;
+        .status-online {
+            background: #d4edda;
+            color: #155724;
         }
         
+        .status-offline {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        /* Карточки */
         .card {
             background: white;
-            border-radius: var(--border-radius);
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
-            overflow: hidden;
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-        }
-        
-        .card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
-        }
-        
-        .card-header {
-            padding: 20px;
-            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
-            color: white;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        
-        .card-body {
+            border-radius: 10px;
             padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            border: 1px solid #eee;
+        }
+        
+        .card-title {
+            font-size: 1.3rem;
+            color: #2c3e50;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #3498db;
         }
         
         /* Формы */
@@ -234,314 +176,282 @@ String getHeader(const String& title) {
             display: block;
             margin-bottom: 8px;
             font-weight: 600;
-            color: #444;
+            color: #2c3e50;
         }
         
         .form-control {
             width: 100%;
-            padding: 12px 15px;
-            border: 2px solid #e1e5e9;
-            border-radius: var(--border-radius);
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
             font-size: 1rem;
-            transition: border-color 0.3s ease;
-            background-color: #f8f9fa;
+            transition: border-color 0.3s;
         }
         
         .form-control:focus {
             outline: none;
-            border-color: var(--primary-color);
-            background-color: white;
+            border-color: #3498db;
+            box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
         }
         
+        /* Слайдеры */
         .slider-container {
+            margin-bottom: 20px;
+        }
+        
+        .slider-value {
             display: flex;
-            align-items: center;
-            gap: 15px;
-            margin-top: 5px;
-        }
-        
-        .slider {
-            flex: 1;
-            height: 6px;
-            -webkit-appearance: none;
-            background: linear-gradient(to right, var(--primary-color), var(--secondary-color));
-            border-radius: 3px;
-            outline: none;
-        }
-        
-        .slider::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            width: 20px;
-            height: 20px;
-            background: white;
-            border-radius: 50%;
-            cursor: pointer;
-            border: 2px solid var(--primary-color);
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            justify-content: space-between;
+            margin-bottom: 10px;
         }
         
         .value-display {
-            min-width: 40px;
-            text-align: center;
+            background: #3498db;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 15px;
             font-weight: 600;
-            color: var(--primary-color);
-            background-color: rgba(67, 97, 238, 0.1);
-            padding: 5px 10px;
+        }
+        
+        input[type="range"] {
+            width: 100%;
+            height: 8px;
             border-radius: 4px;
+            background: #ddd;
+            outline: none;
         }
         
         /* Кнопки */
         .btn {
             display: inline-block;
             padding: 12px 25px;
-            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            background: #3498db;
             color: white;
             border: none;
-            border-radius: var(--border-radius);
+            border-radius: 6px;
             font-size: 1rem;
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.3s ease;
             text-decoration: none;
+            transition: background 0.3s;
             text-align: center;
         }
         
         .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(67, 97, 238, 0.4);
+            background: #2980b9;
         }
         
-        .btn-wide {
+        .btn-block {
+            display: block;
             width: 100%;
-            margin-top: 10px;
+        }
+        
+        .btn-success {
+            background: #2ecc71;
+        }
+        
+        .btn-success:hover {
+            background: #27ae60;
+        }
+        
+        /* Статус иконки */
+        .status-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #3498db;
+        }
+        
+        .status-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: #3498db;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 15px;
+            font-size: 20px;
         }
         
         /* Адаптивность */
         @media (max-width: 768px) {
-            .sidebar {
-                width: 70px;
-                padding: 15px 0;
+            #sidebar {
+                transform: translateX(-100%);
             }
             
-            .sidebar-header h2 span,
-            .nav-item span,
-            .status-label,
-            .status-value,
-            .system-status {
-                display: none;
+            #sidebar.active {
+                transform: translateX(0);
             }
             
-            .nav-item {
+            #content {
+                margin-left: 0;
+            }
+            
+            #menu-toggle {
+                display: flex;
+                align-items: center;
                 justify-content: center;
-                padding: 15px;
             }
             
-            .nav-item i {
-                font-size: 1.2rem;
-            }
-            
-            .main-content {
-                margin-left: 70px;
-                padding: 15px;
-            }
-            
-            .page-header {
-                padding: 15px;
-            }
-            
-            .card-grid {
-                grid-template-columns: 1fr;
+            .content-header {
+                flex-direction: column;
+                gap: 15px;
+                text-align: center;
             }
         }
         
-        /* Иконки */
-        .icon {
-            display: inline-block;
-            width: 24px;
-            text-align: center;
-            margin-right: 8px;
+        /* Уведомления */
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 25px;
+            border-radius: 6px;
+            color: white;
+            font-weight: 600;
+            z-index: 9999;
+            animation: slideIn 0.3s ease;
         }
         
-        /* Вспомогательные классы */
-        .text-center { text-align: center; }
-        .mb-3 { margin-bottom: 1rem; }
-        .mb-4 { margin-bottom: 1.5rem; }
-        .mt-3 { margin-top: 1rem; }
-        .mt-4 { margin-top: 1.5rem; }
-        .p-3 { padding: 1rem; }
+        .notification.success {
+            background: #2ecc71;
+        }
+        
+        .notification.error {
+            background: #e74c3c;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
     </style>
 </head>
 <body>
-    )rawliteral";
+    <!-- Кнопка меню для мобильных -->
+    <button id="menu-toggle" onclick="toggleSidebar()">☰</button>
     
-    return html;
-}
-
-String getSidebar(const String& activePage = "dashboard") {
-    String sidebar = R"rawliteral(
-    <div class="sidebar">
+    <!-- Сайдбар -->
+    <div id="sidebar">
         <div class="sidebar-header">
-            <h2><i class="icon">🚗</i> <span>Car Detector</span></h2>
+            <h3>Car Detector</h3>
         </div>
-        
-        <div class="nav-menu">
-            <a href="/" class="nav-item )rawliteral";
-    sidebar += (activePage == "dashboard" ? "active" : "");
-    sidebar += R"rawliteral(">
-                <i>📊</i> <span>Dashboard</span>
-            </a>
-            <a href="/detection" class="nav-item )rawliteral";
-    sidebar += (activePage == "detection" ? "active" : "");
-    sidebar += R"rawliteral(">
-                <i>⚙️</i> <span>Detection Settings</span>
-            </a>
-            <a href="/wifi" class="nav-item )rawliteral";
-    sidebar += (activePage == "wifi" ? "active" : "");
-    sidebar += R"rawliteral(">
-                <i>📶</i> <span>WiFi Settings</span>
-            </a>
-            <a href="/roi" class="nav-item )rawliteral";
-    sidebar += (activePage == "roi" ? "active" : "");
-    sidebar += R"rawliteral(">
-                <i>🎯</i> <span>ROI Settings</span>
-            </a>
-            <a href="/list_photos" class="nav-item )rawliteral";
-    sidebar += (activePage == "photos" ? "active" : "");
-    sidebar += R"rawliteral(">
-                <i>🖼️</i> <span>Photos</span>
-            </a>
+        <div class="sidebar-menu">
+            <a href="/" class="active">Dashboard</a>
+            <a href="/detection">Detection</a>
+            <a href="/wifi">WiFi</a>
+            <a href="/roi">ROI</a>
+            <a href="/list_photos">Photos</a>
         </div>
-        
-        <div class="system-status">
-            <div class="status-item">
-                <span class="status-label">Camera:</span>
-                <span class="status-value )rawliteral";
-    sidebar += (camera_initialized ? "status-ok" : "status-error");
-    sidebar += R"rawliteral(">
-                    )rawliteral";
-    sidebar += (camera_initialized ? "OK" : "ERROR");
-    sidebar += R"rawliteral(
-                </span>
-            </div>
-            <div class="status-item">
-                <span class="status-label">SD Card:</span>
-                <span class="status-value )rawliteral";
-    sidebar += (sd_initialized ? "status-ok" : "status-error");
-    sidebar += R"rawliteral(">
-                    )rawliteral";
-    sidebar += (sd_initialized ? "OK" : "ERROR");
-    sidebar += R"rawliteral(
-                </span>
-            </div>
-            <div class="status-item">
-                <span class="status-label">Clients:</span>
-                <span class="status-value status-ok">
-                    )rawliteral";
-    sidebar += String(WiFi.softAPgetStationNum());
-    sidebar += R"rawliteral(
-                </span>
+        <div style="padding: 20px; border-top: 1px solid #34495e; margin-top: 20px;">
+            <div style="color: #bdc3c7; font-size: 0.9rem; margin-bottom: 10px;">System Status</div>
+            <div class="status-badge )rawliteral";
+    
+    html += (camera_initialized && sd_initialized ? "status-online" : "status-offline");
+    html += R"rawliteral(">
+                )rawliteral";
+    html += (camera_initialized && sd_initialized ? "System Online" : "System Warning");
+    html += R"rawliteral(
             </div>
         </div>
     </div>
     
-    <div class="main-content">
-    )rawliteral";
-    
-    return sidebar;
-}
+    <!-- Основной контент -->
+    <div id="content">
+        <div class="content-header">
+            <h1 class="page-title">)rawliteral";
+    html += title;
+    html += R"rawliteral(</h1>
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <span style="color: #7f8c8d;">IP: )rawliteral";
+    html += WiFi.softAPIP().toString();
+    html += R"rawliteral(</span>
+                <span class="status-badge status-online">
+                    )rawliteral";
+    html += String(WiFi.softAPgetStationNum());
+    html += R"rawliteral( connected
+                </span>
+            </div>
+        </div>
+        
+        )rawliteral";
+    html += content;
+    html += R"rawliteral(
+    </div>
 
-String getFooter() {
-    return R"rawliteral(
-    </div>
-    
     <script>
-        // Функция для сохранения настроек
-        async function saveSettings(endpoint, formData) {
-            try {
-                const response = await fetch(endpoint, {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                if (response.ok) {
-                    showNotification('Settings saved successfully!', 'success');
-                } else {
-                    showNotification('Error saving settings!', 'error');
-                }
-            } catch (error) {
-                showNotification('Connection error: ' + error, 'error');
-            }
+        function toggleSidebar() {
+            document.getElementById('sidebar').classList.toggle('active');
+            document.getElementById('content').style.marginLeft = 
+                document.getElementById('sidebar').classList.contains('active') ? '250px' : '0';
         }
         
-        // Уведомления
+        // Закрытие сайдбара при клике вне его на мобильных
+        document.addEventListener('click', function(event) {
+            const sidebar = document.getElementById('sidebar');
+            const menuToggle = document.getElementById('menu-toggle');
+            const content = document.getElementById('content');
+            
+            if (window.innerWidth <= 768 && 
+                !sidebar.contains(event.target) && 
+                !menuToggle.contains(event.target) &&
+                sidebar.classList.contains('active')) {
+                sidebar.classList.remove('active');
+                content.style.marginLeft = '0';
+            }
+        });
+        
+        // Обновление значений слайдеров
+        document.querySelectorAll('input[type="range"]').forEach(slider => {
+            const valueId = slider.id + 'Value';
+            const valueDisplay = document.getElementById(valueId);
+            if (valueDisplay) {
+                slider.addEventListener('input', function() {
+                    valueDisplay.textContent = this.value;
+                });
+            }
+        });
+        
+        // Показ уведомлений
         function showNotification(message, type) {
-            // Создаем элемент уведомления
             const notification = document.createElement('div');
-            notification.className = `notification ${type}`;
-            notification.innerHTML = `
-                <span class="notification-icon">${type === 'success' ? '✓' : '✗'}</span>
-                <span class="notification-text">${message}</span>
-            `;
-            
-            // Стили для уведомления
-            notification.style.cssText = `
-                position: fixed;
-                top: 20px;
-                right: 20px;
-                background: ${type === 'success' ? '#4CAF50' : '#F44336'};
-                color: white;
-                padding: 15px 20px;
-                border-radius: 8px;
-                display: flex;
-                align-items: center;
-                gap: 10px;
-                box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-                z-index: 10000;
-                animation: slideIn 0.3s ease;
-            `;
-            
+            notification.className = 'notification ' + type;
+            notification.textContent = message;
             document.body.appendChild(notification);
             
-            // Удаляем через 3 секунды
             setTimeout(() => {
-                notification.style.animation = 'slideOut 0.3s ease';
-                setTimeout(() => notification.remove(), 300);
+                notification.remove();
             }, 3000);
-            
-            // CSS анимации
-            const style = document.createElement('style');
-            style.textContent = `
-                @keyframes slideIn {
-                    from { transform: translateX(100%); opacity: 0; }
-                    to { transform: translateX(0); opacity: 1; }
-                }
-                @keyframes slideOut {
-                    from { transform: translateX(0); opacity: 1; }
-                    to { transform: translateX(100%); opacity: 0; }
-                }
-            `;
-            document.head.appendChild(style);
         }
         
-        // Обновление значений слайдеров в реальном времени
-        function initSliders() {
-            document.querySelectorAll('.slider').forEach(slider => {
-                const displayId = slider.id + 'Value';
-                const display = document.getElementById(displayId);
-                if (display) {
-                    slider.addEventListener('input', function() {
-                        display.textContent = this.value;
-                    });
-                }
-            });
+        // Показ/скрытие пароля
+        function togglePassword() {
+            const passwordInput = document.getElementById('password');
+            const toggleIcon = document.getElementById('togglePassword');
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                toggleIcon.textContent = '👁️';
+            } else {
+                passwordInput.type = 'password';
+                toggleIcon.textContent = '👁️‍🗨️';
+            }
         }
-        
-        // Инициализация при загрузке
-        document.addEventListener('DOMContentLoaded', initSliders);
     </script>
 </body>
 </html>
-    )rawliteral";
+)rawliteral";
+    return html;
 }
 
 /**
@@ -549,116 +459,107 @@ String getFooter() {
  */
 String getMainPage()
 {
-    String html = getHeader("Dashboard");
-    html += getSidebar("dashboard");
-    
-    html += R"rawliteral(
-        <div class="page-header">
-            <div>
-                <h1 class="page-title">System Dashboard</h1>
-                <p class="page-subtitle">Car Detection System Status & Monitoring</p>
+    String content = R"rawliteral(
+        <div class="card">
+            <h2 class="card-title">System Status</h2>
+            
+            <div class="status-item">
+                <div class="status-icon">
+                    📷
+                </div>
+                <div>
+                    <h3 style="margin-bottom: 5px;">Camera</h3>
+                    <p style="color: )rawliteral";
+    content += (camera_initialized ? "#27ae60" : "#e74c3c");
+    content += R"rawliteral(;">
+                        )rawliteral";
+    content += (camera_initialized ? "✓ Operational" : "✗ Not Initialized");
+    content += R"rawliteral(
+                    </p>
+                </div>
             </div>
-            <div class="current-ip">
-                IP: )rawliteral";
-    html += WiFi.softAPIP().toString();
-    html += R"rawliteral(
+            
+            <div class="status-item">
+                <div class="status-icon">
+                    💾
+                </div>
+                <div>
+                    <h3 style="margin-bottom: 5px;">SD Card</h3>
+                    <p style="color: )rawliteral";
+    content += (sd_initialized ? "#27ae60" : "#e74c3c");
+    content += R"rawliteral(;">
+                        )rawliteral";
+    content += (sd_initialized ? "✓ Mounted" : "✗ Not Found");
+    content += R"rawliteral(
+                    </p>
+                </div>
+            </div>
+            
+            <div class="status-item">
+                <div class="status-icon">
+                    📶
+                </div>
+                <div>
+                    <h3 style="margin-bottom: 5px;">WiFi Access Point</h3>
+                    <p>Clients: )rawliteral";
+    content += String(WiFi.softAPgetStationNum());
+    content += R"rawliteral(</p>
+                </div>
             </div>
         </div>
         
-        <div class="card-grid">
-            <div class="card">
-                <div class="card-header">
-                    <h3>System Status</h3>
-                </div>
-                <div class="card-body">
-                    <div class="form-group">
-                        <div class="status-item">
-                            <span>Camera Module:</span>
-                            <span class="status-value )rawliteral";
-    html += (camera_initialized ? "status-ok" : "status-error");
-    html += R"rawliteral(">
-                                )rawliteral";
-    html += (camera_initialized ? "Operational" : "Failed");
-    html += R"rawliteral(
-                            </span>
-                        </div>
-                        <div class="status-item">
-                            <span>SD Storage:</span>
-                            <span class="status-value )rawliteral";
-    html += (sd_initialized ? "status-ok" : "status-error");
-    html += R"rawliteral(">
-                                )rawliteral";
-    html += (sd_initialized ? "Available" : "Not Found");
-    html += R"rawliteral(
-                            </span>
-                        </div>
-                        <div class="status-item">
-                            <span>WiFi Clients:</span>
-                            <span class="status-value status-ok">
-                                )rawliteral";
-    html += String(WiFi.softAPgetStationNum());
-    html += R"rawliteral( connected
-                            </span>
-                        </div>
-                        <div class="status-item">
-                            <span>Current Mode:</span>
-                            <span class="status-value status-ok">
-                                Monitoring
-                            </span>
-                        </div>
-                    </div>
-                </div>
+        <div class="card">
+            <h2 class="card-title">Quick Actions</h2>
+            <div style="display: grid; gap: 10px;">
+                <a href="/detection" class="btn">
+                    Detection Settings
+                </a>
+                <a href="/wifi" class="btn">
+                    WiFi Settings
+                </a>
+                <a href="/roi" class="btn">
+                    ROI Settings
+                </a>
+                <a href="/list_photos" class="btn">
+                    View Photos
+                </a>
             </div>
-            
-            <div class="card">
-                <div class="card-header">
-                    <h3>Quick Actions</h3>
+        </div>
+        
+        <div class="card">
+            <h2 class="card-title">Current Settings</h2>
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px;">
+                <div>
+                    <h4>Detection Interval</h4>
+                    <p>)rawliteral";
+    content += String(settings.interval);
+    content += R"rawliteral( ms</p>
                 </div>
-                <div class="card-body">
-                    <button class="btn btn-wide mb-3" onclick="location.href='/detection'">
-                        ⚙️ Detection Settings
-                    </button>
-                    <button class="btn btn-wide mb-3" onclick="location.href='/wifi'">
-                        📶 WiFi Configuration
-                    </button>
-                    <button class="btn btn-wide mb-3" onclick="location.href='/roi'">
-                        🎯 ROI Calibration
-                    </button>
-                    <button class="btn btn-wide" onclick="location.href='/list_photos'">
-                        🖼️ View Photos
-                    </button>
+                <div>
+                    <h4>Distance Threshold</h4>
+                    <p>)rawliteral";
+    content += String(settings.distance);
+    content += R"rawliteral(</p>
                 </div>
-            </div>
-            
-            <div class="card">
-                <div class="card-header">
-                    <h3>System Information</h3>
+                <div>
+                    <h4>Max Files</h4>
+                    <p>)rawliteral";
+    content += String(settings.max_files);
+    content += R"rawliteral(</p>
                 </div>
-                <div class="card-body">
-                    <div class="form-group">
-                        <label>Device Name</label>
-                        <div class="form-control">ESP32-CAM Car Detector</div>
-                        
-                        <label>Firmware Version</label>
-                        <div class="form-control">v1.0.0</div>
-                        
-                        <label>AP SSID</label>
-                        <div class="form-control">)rawliteral";
-    html += settings.ap_ssid;
-    html += R"rawliteral(</div>
-                        
-                        <label>Detection Distance</label>
-                        <div class="form-control">)rawliteral";
-    html += String(settings.distance);
-    html += R"rawliteral( cm</div>
-                    </div>
+                <div>
+                    <h4>ROI Size</h4>
+                    <p>)rawliteral";
+    content += String(settings.roi_width);
+    content += R"rawliteral( x )rawliteral";
+    content += String(settings.roi_height);
+    content += R"rawliteral(</p>
                 </div>
             </div>
         </div>
     )rawliteral";
     
-    html += getFooter();
-    return html;
+    return getBaseTemplate("Dashboard", content);
 }
 
 /**
@@ -666,130 +567,89 @@ String getMainPage()
  */
 String getDetectionSettingsPage()
 {
-    String html = getHeader("Detection Settings");
-    html += getSidebar("detection");
-    
-    html += R"rawliteral(
-        <div class="page-header">
-            <div>
-                <h1 class="page-title">Detection Settings</h1>
-                <p class="page-subtitle">Configure car detection sensitivity parameters</p>
-            </div>
-        </div>
-        
-        <form id="detectionForm" onsubmit="event.preventDefault(); saveDetectionSettings();">
-            <div class="card-grid">
-                <div class="card">
-                    <div class="card-header">
-                        <h3>Distance & Timing</h3>
-                    </div>
-                    <div class="card-body">
-                        <div class="form-group">
-                            <label class="form-label">Detection Distance (cm)</label>
-                            <div class="slider-container">
-                                <input type="range" class="slider" id="distance" min="50" max="500" value=")rawliteral";
-    html += String(settings.distance);
-    html += R"rawliteral(" step="10">
-                                <span class="value-display" id="distanceValue">)rawliteral";
-    html += String(settings.distance);
-    html += R"rawliteral(</span>
-                            </div>
-                            <small>Cars within this distance will trigger detection</small>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label class="form-label">Check Interval (ms)</label>
-                            <input type="number" class="form-control" id="interval" 
-                                   value=")rawliteral";
-    html += String(settings.interval);
-    html += R"rawliteral(" 
-                                   min="1000" max="30000" step="1000">
-                            <small>Time between detection checks</small>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="card">
-                    <div class="card-header">
-                        <h3>Image Processing</h3>
-                    </div>
-                    <div class="card-body">
-                        <div class="form-group">
-                            <label class="form-label">Pixel Threshold (0-255)</label>
-                            <div class="slider-container">
-                                <input type="range" class="slider" id="threshold" min="0" max="255" value=")rawliteral";
-    html += String(settings.threshold);
-    html += R"rawliteral(">
-                                <span class="value-display" id="thresholdValue">)rawliteral";
-    html += String(settings.threshold);
-    html += R"rawliteral(</span>
-                            </div>
-                            <small>Dark pixel threshold for detection</small>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label class="form-label">Minimum Area</label>
-                            <input type="number" class="form-control" id="area" 
-                                   value=")rawliteral";
-    html += String(settings.area);
-    html += R"rawliteral(" 
-                                   min="1" max="10000">
-                            <small>Minimum dark pixel area to trigger</small>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="card">
-                    <div class="card-header">
-                        <h3>Advanced Settings</h3>
-                    </div>
-                    <div class="card-body">
-                        <div class="form-group">
-                            <label class="form-label">Dark Ratio Range</label>
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                                <div>
-                                    <label style="font-size: 0.9rem; color: #666;">Min (0-1)</label>
-                                    <input type="number" class="form-control" id="dark_min" step="0.01" 
-                                           value=")rawliteral";
-    html += String(settings.dark_min);
-    html += R"rawliteral(" 
-                                           min="0" max="1">
-                                </div>
-                                <div>
-                                    <label style="font-size: 0.9rem; color: #666;">Max (0-1)</label>
-                                    <input type="number" class="form-control" id="dark_max" step="0.01" 
-                                           value=")rawliteral";
-    html += String(settings.dark_max);
-    html += R"rawliteral(" 
-                                           min="0" max="1">
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label class="form-label">Max Files to Store</label>
-                            <input type="number" class="form-control" id="max_files" 
-                                   value=")rawliteral";
-    html += String(settings.max_files);
-    html += R"rawliteral(" 
-                                   min="1" max="1000">
-                            <small>Maximum number of photos to keep</small>
-                        </div>
-                    </div>
-                </div>
-            </div>
+    String content = R"rawliteral(
+        <div class="card">
+            <h2 class="card-title">Detection Settings</h2>
             
-            <div class="card mt-4">
-                <div class="card-body text-center">
-                    <button type="submit" class="btn" style="padding: 15px 40px; font-size: 1.1rem;">
-                        💾 Save Detection Settings
-                    </button>
-                    <p class="mt-3" style="color: #666;">
-                        Changes will take effect immediately
-                    </p>
+            <form id="detectionForm">
+                <div class="slider-container">
+                    <div class="slider-value">
+                        <label class="form-label">Distance Threshold</label>
+                        <span class="value-display" id="distanceValue">)rawliteral";
+    content += String(settings.distance);
+    content += R"rawliteral(</span>
+                    </div>
+                    <input type="range" id="distance" min="0" max="400" value=")rawliteral";
+    content += String(settings.distance);
+    content += R"rawliteral(">
                 </div>
-            </div>
-        </form>
+                
+                <div class="form-group">
+                    <label class="form-label">Detection Interval (ms)</label>
+                    <input type="number" class="form-control" id="interval" 
+                           value=")rawliteral";
+    content += String(settings.interval);
+    content += R"rawliteral(" min="0" max="10000" step="100">
+                </div>
+                
+                <div class="slider-container">
+                    <div class="slider-value">
+                        <label class="form-label">Pixel Threshold</label>
+                        <span class="value-display" id="thresholdValue">)rawliteral";
+    content += String(settings.threshold);
+    content += R"rawliteral(</span>
+                    </div>
+                    <input type="range" id="threshold" min="0" max="255" value=")rawliteral";
+    content += String(settings.threshold);
+    content += R"rawliteral(">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Minimum Area</label>
+                    <input type="number" class="form-control" id="area" 
+                           value=")rawliteral";
+    content += String(settings.area);
+    content += R"rawliteral(" min="1" max="10000">
+                </div>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                    <div class="form-group">
+                        <label class="form-label">Dark Pixel Min</label>
+                        <input type="number" class="form-control" id="dark_min" step="0.01"
+                               value=")rawliteral";
+    content += String(settings.dark_min);
+    content += R"rawliteral(" min="0" max="1">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Dark Pixel Max</label>
+                        <input type="number" class="form-control" id="dark_max" step="0.01"
+                               value=")rawliteral";
+    content += String(settings.dark_max);
+    content += R"rawliteral(" min="0" max="1">
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Texture Sensitivity</label>
+                    <input type="number" class="form-control" id="texture" 
+                           value=")rawliteral";
+    content += String(settings.texture);
+    content += R"rawliteral(" min="0" max="10000">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Maximum Files</label>
+                    <input type="number" class="form-control" id="max_files" 
+                           value=")rawliteral";
+    content += String(settings.max_files);
+    content += R"rawliteral(" min="1" max="1000">
+                </div>
+                
+                <button type="button" class="btn btn-block" onclick="saveDetectionSettings()">
+                    Save Settings
+                </button>
+            </form>
+        </div>
         
         <script>
             async function saveDetectionSettings() {
@@ -800,26 +660,24 @@ String getDetectionSettingsPage()
                 formData.append('area', document.getElementById('area').value);
                 formData.append('dark_min', document.getElementById('dark_min').value);
                 formData.append('dark_max', document.getElementById('dark_max').value);
+                formData.append('texture', document.getElementById('texture').value);
                 formData.append('max_files', document.getElementById('max_files').value);
                 
-                await saveSettings('/save_detection', formData);
+                try {
+                    const response = await fetch('/save_detection', { method: 'POST', body: formData });
+                    if (response.ok) {
+                        showNotification('Settings saved successfully!', 'success');
+                    } else {
+                        showNotification('Error saving settings!', 'error');
+                    }
+                } catch (error) {
+                    showNotification('Error: ' + error, 'error');
+                }
             }
-            
-            // Initialize sliders for this page
-            document.addEventListener('DOMContentLoaded', function() {
-                document.getElementById('distance').oninput = function() {
-                    document.getElementById('distanceValue').textContent = this.value;
-                };
-                
-                document.getElementById('threshold').oninput = function() {
-                    document.getElementById('thresholdValue').textContent = this.value;
-                };
-            });
         </script>
     )rawliteral";
     
-    html += getFooter();
-    return html;
+    return getBaseTemplate("Detection Settings", content);
 }
 
 /**
@@ -827,85 +685,57 @@ String getDetectionSettingsPage()
  */
 String getWifiSettingsPage()
 {
-    String html = getHeader("WiFi Settings");
-    html += getSidebar("wifi");
-    
-    html += R"rawliteral(
-        <div class="page-header">
-            <div>
-                <h1 class="page-title">WiFi Access Point Settings</h1>
-                <p class="page-subtitle">Configure wireless network for system access</p>
-            </div>
-        </div>
-        
-        <div class="card-grid">
-            <div class="card">
-                <div class="card-header">
-                    <h3>Current Configuration</h3>
-                </div>
-                <div class="card-body">
-                    <div class="form-group">
-                        <label class="form-label">SSID (Network Name)</label>
-                        <div class="form-control">)rawliteral";
-    html += settings.ap_ssid;
-    html += R"rawliteral(</div>
-                        
-                        <label class="form-label">Password</label>
-                        <div class="form-control">••••••••</div>
-                        
-                        <label class="form-label">IP Address</label>
-                        <div class="form-control">)rawliteral";
-    html += WiFi.softAPIP().toString();
-    html += R"rawliteral(</div>
-                        
-                        <label class="form-label">Connected Devices</label>
-                        <div class="form-control">)rawliteral";
-    html += String(WiFi.softAPgetStationNum());
-    html += R"rawliteral( client(s)</div>
-                    </div>
-                </div>
+    String content = R"rawliteral(
+        <div class="card">
+            <h2 class="card-title">WiFi Settings</h2>
+            
+            <div style="background: #e8f4fc; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                <h3 style="color: #3498db; margin-bottom: 10px;">Current Configuration</h3>
+                <p><strong>SSID:</strong> )rawliteral";
+    content += settings.ap_ssid;
+    content += R"rawliteral(</p>
+                <p><strong>Password:</strong> ••••••••</p>
+                <p><strong>IP Address:</strong> )rawliteral";
+    content += WiFi.softAPIP().toString();
+    content += R"rawliteral(</p>
             </div>
             
-            <div class="card">
-                <div class="card-header">
-                    <h3>Update WiFi Settings</h3>
+            <form id="wifiForm">
+                <div class="form-group">
+                    <label class="form-label">New SSID</label>
+                    <input type="text" class="form-control" id="ssid" 
+                           value=")rawliteral";
+    content += settings.ap_ssid;
+    content += R"rawliteral(" required>
                 </div>
-                <div class="card-body">
-                    <form id="wifiForm" onsubmit="event.preventDefault(); saveWifiSettings();">
-                        <div class="form-group">
-                            <label class="form-label">New SSID</label>
-                            <input type="text" class="form-control" id="ssid" 
-                                   value=")rawliteral";
-    html += settings.ap_ssid;
-    html += R"rawliteral(" 
-                                   placeholder="Enter network name" required>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label class="form-label">New Password</label>
-                            <input type="password" class="form-control" id="password" 
-                                   value=")rawliteral";
-    html += settings.ap_password;
-    html += R"rawliteral(" 
-                                   placeholder="Minimum 8 characters" minlength="8" required>
-                            <small style="color: #666;">Password must be at least 8 characters long</small>
-                        </div>
-                        
-                        <div class="form-group">
-                            <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px;">
-                                <strong>⚠️ Important Note:</strong>
-                                <p style="margin-top: 5px; color: #856404;">
-                                    Changes will take effect after system reboot. You will need to reconnect to the new network.
-                                </p>
-                            </div>
-                        </div>
-                        
-                        <button type="submit" class="btn btn-wide">
-                            🔄 Update WiFi Settings
+                
+                <div class="form-group">
+                    <label class="form-label">New Password</label>
+                    <div style="position: relative;">
+                        <input type="password" class="form-control" id="password" 
+                               value=")rawliteral";
+    content += settings.ap_password;
+    content += R"rawliteral(" required minlength="8">
+                        <button type="button" onclick="togglePassword()" 
+                                style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+                                       background: none; border: none; cursor: pointer; font-size: 20px;"
+                                id="togglePassword">
+                            👁️‍🗨️
                         </button>
-                    </form>
+                    </div>
                 </div>
-            </div>
+                
+                <div style="background: #fff3cd; padding: 15px; border-radius: 6px; margin-bottom: 20px;
+                    border-left: 4px solid #ffc107;">
+                    <p style="color: #856404; margin: 0;">
+                        <strong>Note:</strong> Changes will take effect after device reboot.
+                    </p>
+                </div>
+                
+                <button type="button" class="btn btn-success btn-block" onclick="saveWifiSettings()">
+                    Save & Reboot
+                </button>
+            </form>
         </div>
         
         <script>
@@ -918,17 +748,32 @@ String getWifiSettingsPage()
                     return;
                 }
                 
+                if (!confirm('Device will reboot with new WiFi settings. Continue?')) {
+                    return;
+                }
+                
                 const formData = new FormData();
                 formData.append('ssid', ssid);
                 formData.append('password', password);
                 
-                await saveSettings('/save_wifi', formData);
+                try {
+                    const response = await fetch('/save_wifi', { method: 'POST', body: formData });
+                    if (response.ok) {
+                        showNotification('WiFi settings saved! Rebooting...', 'success');
+                        setTimeout(() => {
+                            window.location.href = '/';
+                        }, 2000);
+                    } else {
+                        showNotification('Error saving settings!', 'error');
+                    }
+                } catch (error) {
+                    showNotification('Error: ' + error, 'error');
+                }
             }
         </script>
     )rawliteral";
     
-    html += getFooter();
-    return html;
+    return getBaseTemplate("WiFi Settings", content);
 }
 
 /**
@@ -936,175 +781,110 @@ String getWifiSettingsPage()
  */
 String getROISettingsPage()
 {
-    String html = getHeader("ROI Settings");
-    html += getSidebar("roi");
-    
-    html += R"rawliteral(
-        <div class="page-header">
-            <div>
-                <h1 class="page-title">Region of Interest (ROI)</h1>
-                <p class="page-subtitle">Define the detection area in the camera frame</p>
-            </div>
-        </div>
-        
-        <div class="card-grid">
-            <div class="card">
-                <div class="card-header">
-                    <h3>Current ROI Configuration</h3>
-                </div>
-                <div class="card-body">
-                    <div class="form-group">
-                        <div style="background: #e7f3ff; padding: 20px; border-radius: var(--border-radius);">
-                            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;">
-                                <div>
-                                    <label style="font-size: 0.9rem; color: #666;">X Position</label>
-                                    <div class="form-control">)rawliteral";
-    html += String(settings.roi_x);
-    html += R"rawliteral( px</div>
-                                </div>
-                                <div>
-                                    <label style="font-size: 0.9rem; color: #666;">Y Position</label>
-                                    <div class="form-control">)rawliteral";
-    html += String(settings.roi_y);
-    html += R"rawliteral( px</div>
-                                </div>
-                                <div>
-                                    <label style="font-size: 0.9rem; color: #666;">Width</label>
-                                    <div class="form-control">)rawliteral";
-    html += String(settings.roi_width);
-    html += R"rawliteral( px</div>
-                                </div>
-                                <div>
-                                    <label style="font-size: 0.9rem; color: #666;">Height</label>
-                                    <div class="form-control">)rawliteral";
-    html += String(settings.roi_height);
-    html += R"rawliteral( px</div>
-                                </div>
-                            </div>
-                            
-                            <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #cfe2ff;">
-                                <strong>Frame Information:</strong>
-                                <p style="margin-top: 5px; color: #666; font-size: 0.9rem;">
-                                    Detection frame: 160×120 pixels<br>
-                                    ROI covers )rawliteral";
-    html += String((settings.roi_width * settings.roi_height * 100) / (160 * 120));
-    html += R"rawliteral(% of the frame
-                                </p>
-                            </div>
-                        </div>
+    String content = R"rawliteral(
+        <div class="card">
+            <h2 class="card-title">ROI Settings</h2>
+            
+            <div style="text-align: center; margin-bottom: 20px;">
+                <div style="display: inline-block; width: 200px; height: 150px; 
+                    background: #ecf0f1; border: 2px solid #bdc3c7; border-radius: 8px;
+                    position: relative; overflow: hidden;">
+                    <div style="position: absolute; 
+                        top: )rawliteral";
+    content += String(settings.roi_y * 150 / 120);
+    content += R"rawliteral(px;
+                        left: )rawliteral";
+    content += String(settings.roi_x * 200 / 160);
+    content += R"rawliteral(px;
+                        width: )rawliteral";
+    content += String(settings.roi_width * 200 / 160);
+    content += R"rawliteral(px;
+                        height: )rawliteral";
+    content += String(settings.roi_height * 150 / 120);
+    content += R"rawliteral(px;
+                        background: rgba(52, 152, 219, 0.3); border: 2px solid #3498db;">
+                        <span style="position: absolute; top: 50%; left: 50%; 
+                            transform: translate(-50%, -50%); color: #3498db; font-weight: bold;">
+                            ROI
+                        </span>
                     </div>
                 </div>
+                <p style="color: #7f8c8d; margin-top: 10px;">Image: 160x120 pixels</p>
             </div>
             
-            <div class="card">
-                <div class="card-header">
-                    <h3>Adjust ROI Settings</h3>
-                </div>
-                <div class="card-body">
-                    <form id="roiForm" onsubmit="event.preventDefault(); saveRoiSettings();">
-                        <div class="form-group">
-                            <label class="form-label">ROI Width (px)</label>
-                            <input type="number" class="form-control" id="width" 
-                                   value=")rawliteral";
-    html += String(settings.roi_width);
-    html += R"rawliteral(" 
-                                   min="10" max="160">
-                            <small>Maximum: 160px (frame width)</small>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label class="form-label">ROI Height (px)</label>
-                            <input type="number" class="form-control" id="height" 
-                                   value=")rawliteral";
-    html += String(settings.roi_height);
-    html += R"rawliteral(" 
-                                   min="10" max="120">
-                            <small>Maximum: 120px (frame height)</small>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label class="form-label">X Offset (px)</label>
-                            <input type="number" class="form-control" id="x" 
-                                   value=")rawliteral";
-    html += String(settings.roi_x);
-    html += R"rawliteral(" 
-                                   min="0" max="160">
-                            <small>Horizontal position from left</small>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label class="form-label">Y Offset (px)</label>
-                            <input type="number" class="form-control" id="y" 
-                                   value=")rawliteral";
-    html += String(settings.roi_y);
-    html += R"rawliteral(" 
-                                   min="0" max="120">
-                            <small>Vertical position from top</small>
-                        </div>
-                        
-                        <div class="form-group">
-                            <div style="background: #d1ecf1; border-left: 4px solid #0c5460; padding: 15px;">
-                                <strong>💡 ROI Tips:</strong>
-                                <ul style="margin-top: 5px; color: #0c5460; padding-left: 20px;">
-                                    <li>Position ROI on the parking spot area</li>
-                                    <li>Smaller ROI = faster processing</li>
-                                    <li>Ensure ROI fits within 160×120 frame</li>
-                                </ul>
-                            </div>
-                        </div>
-                        
-                        <button type="submit" class="btn btn-wide">
-                            🎯 Update ROI Settings
-                        </button>
-                    </form>
-                </div>
-            </div>
-        </div>
-        
-        <div class="card mt-4">
-            <div class="card-header">
-                <h3>Visual Representation</h3>
-            </div>
-            <div class="card-body">
-                <div style="position: relative; width: 320px; height: 240px; background: #f8f9fa; border: 2px solid #dee2e6; border-radius: var(--border-radius); margin: 0 auto;">
-                    <div style="position: absolute; left: )rawliteral";
-    html += String(settings.roi_x * 2);
-    html += R"rawliteral(px; top: )rawliteral";
-    html += String(settings.roi_y * 2);
-    html += R"rawliteral(px; width: )rawliteral";
-    html += String(settings.roi_width * 2);
-    html += R"rawliteral(px; height: )rawliteral";
-    html += String(settings.roi_height * 2);
-    html += R"rawliteral(px; background: rgba(67, 97, 238, 0.3); border: 2px solid #4361ee; border-radius: 4px;">
-                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #4361ee; font-weight: bold;">
-                            ROI
-                        </div>
+            <form id="roiForm">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                    <div class="form-group">
+                        <label class="form-label">Width (1-160)</label>
+                        <input type="number" class="form-control" id="width" 
+                               value=")rawliteral";
+    content += String(settings.roi_width);
+    content += R"rawliteral(" min="1" max="160">
                     </div>
-                    <div style="position: absolute; bottom: 10px; right: 10px; color: #666; font-size: 0.8rem;">
-                        160×120 (scaled 2x)
+                    <div class="form-group">
+                        <label class="form-label">Height (1-120)</label>
+                        <input type="number" class="form-control" id="height" 
+                               value=")rawliteral";
+    content += String(settings.roi_height);
+    content += R"rawliteral(" min="1" max="120">
                     </div>
                 </div>
-                <p class="text-center mt-3" style="color: #666;">
-                    Visual representation of the ROI area (scaled for visibility)
-                </p>
-            </div>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+                    <div class="form-group">
+                        <label class="form-label">X Offset (0-160)</label>
+                        <input type="number" class="form-control" id="x" 
+                               value=")rawliteral";
+    content += String(settings.roi_x);
+    content += R"rawliteral(" min="0" max="160">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Y Offset (0-120)</label>
+                        <input type="number" class="form-control" id="y" 
+                               value=")rawliteral";
+    content += String(settings.roi_y);
+    content += R"rawliteral(" min="0" max="120">
+                    </div>
+                </div>
+                
+                <div style="background: #e8f6f3; padding: 15px; border-radius: 6px; margin-bottom: 20px;
+                    border-left: 4px solid #1abc9c;">
+                    <p style="color: #0d6256; margin: 0; font-size: 0.9rem;">
+                        <strong>Current ROI:</strong> 
+                        X=)rawliteral";
+    content += String(settings.roi_x);
+    content += R"rawliteral(, 
+                        Y=)rawliteral";
+    content += String(settings.roi_y);
+    content += R"rawliteral(, 
+                        W=)rawliteral";
+    content += String(settings.roi_width);
+    content += R"rawliteral(, 
+                        H=)rawliteral";
+    content += String(settings.roi_height);
+    content += R"rawliteral(
+                    </p>
+                </div>
+                
+                <button type="button" class="btn btn-block" onclick="saveROISettings()">
+                    Save ROI Settings
+                </button>
+            </form>
         </div>
         
         <script>
-            async function saveRoiSettings() {
+            async function saveROISettings() {
                 const width = parseInt(document.getElementById('width').value);
                 const height = parseInt(document.getElementById('height').value);
                 const x = parseInt(document.getElementById('x').value);
                 const y = parseInt(document.getElementById('y').value);
                 
-                // Validate ROI fits within frame
                 if (x + width > 160) {
-                    showNotification('ROI exceeds frame width!', 'error');
+                    showNotification('ROI exceeds image width!', 'error');
                     return;
                 }
-                
                 if (y + height > 120) {
-                    showNotification('ROI exceeds frame height!', 'error');
+                    showNotification('ROI exceeds image height!', 'error');
                     return;
                 }
                 
@@ -1114,11 +894,282 @@ String getROISettingsPage()
                 formData.append('x', x);
                 formData.append('y', y);
                 
-                await saveSettings('/save_roi', formData);
+                try {
+                    const response = await fetch('/save_roi', { method: 'POST', body: formData });
+                    if (response.ok) {
+                        showNotification('ROI settings saved!', 'success');
+                    } else {
+                        showNotification('Error saving settings!', 'error');
+                    }
+                } catch (error) {
+                    showNotification('Error: ' + error, 'error');
+                }
             }
         </script>
     )rawliteral";
     
-    html += getFooter();
-    return html;
+    return getBaseTemplate("ROI Settings", content);
+}
+
+// // // /**
+// // //  * @brief Генерация HTML страницы со списком фото
+// // //  */
+// // // String getPhotosListPage() .. getPhotosListPageSimple
+// // // {
+// // //     String content = R"rawliteral(
+// // //         <div class="card">
+// // //             <h2 class="card-title">Photo Gallery</h2>
+            
+// // //             <div style="text-align: center; padding: 30px 20px;">
+// // //                 <div style="font-size: 48px; color: #3498db; margin-bottom: 20px;">
+// // //                     📷
+// // //                 </div>
+// // //                 <h3 style="margin-bottom: 10px;">Captured Photos</h3>
+// // //                 <p style="color: #7f8c8d; margin-bottom: 30px;">
+// // //                     View and manage photos stored on SD card
+// // //                 </p>
+                
+// // //                 <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
+// // //                     <a href="/list_files" class="btn">
+// // //                         List All Photos
+// // //                     </a>
+// // //                     <a href="/download_photo?file=latest" class="btn">
+// // //                         Download Latest
+// // //                     </a>
+// // //                 </div>
+// // //             </div>
+            
+// // //             <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-top: 20px;">
+// // //                 <h4 style="color: #2c3e50; margin-bottom: 10px;">
+// // //                     Information
+// // //                 </h4>
+// // //                 <ul style="color: #7f8c8d; padding-left: 20px;">
+// // //                     <li>Photos are automatically saved when motion is detected</li>
+// // //                     <li>Maximum files: )rawliteral";
+// // //     content += String(settings.max_files);
+// // //     content += R"rawliteral(</li>
+// // //                     <li>Oldest files are automatically deleted when limit is reached</li>
+// // //                     <li>Photos are stored in JPEG format on SD card</li>
+// // //                 </ul>
+// // //             </div>
+// // //         </div>
+// // //     )rawliteral";
+    
+// // //     return getBaseTemplate("Photos", content);
+// // // }
+
+
+
+
+
+/**
+ * @brief Генерация HTML страницы галереи фотографий
+ */
+String getPhotosListPage()
+{
+    String content = R"rawliteral(
+        <div class="card">
+            <h2 class="card-title">Photo Gallery</h2>
+            
+            <div style="margin-bottom: 20px;">
+                <button class="btn" onclick="location.reload()" style="margin-right: 10px;">
+                    <i class="fas fa-sync-alt"></i> Refresh
+                </button>
+                <button class="btn" onclick="location.href='/list_files'" style="background: #f8f9fa; color: #333;">
+                    <i class="fas fa-list"></i> View File List
+                </button>
+            </div>
+            
+            <!-- Галерея фотографий -->
+            <div id="gallery">
+                )rawliteral";
+    
+    if (!sd_initialized) {
+        content += R"rawliteral(
+                <div style="text-align: center; padding: 40px; color: #e74c3c;">
+                    <h3>SD Card Error</h3>
+                    <p>SD card not available. Check the card and restart the device.</p>
+                </div>
+                )rawliteral";
+    } else {
+        File root = SD_MMC.open("/");
+        if (!root) {
+            content += R"rawliteral(
+                <div style="text-align: center; padding: 40px; color: #e74c3c;">
+                    <h3>SD Card Error</h3>
+                    <p>Failed to open SD card root directory.</p>
+                </div>
+                )rawliteral";
+        } else {
+            // Счетчик файлов
+            int fileCount = 0;
+            std::vector<String> jpgFiles;
+            
+            // Сначала собираем все JPG файлы
+            File file = root.openNextFile();
+            while (file) {
+                String fileName = file.name();
+                if (!file.isDirectory() && 
+                    (fileName.endsWith(".jpg") || fileName.endsWith(".JPG"))) {
+                    jpgFiles.push_back(fileName);
+                    fileCount++;
+                }
+                file.close();
+                file = root.openNextFile();
+            }
+            root.close();
+            
+            if (fileCount == 0) {
+                content += R"rawliteral(
+                    <div style="text-align: center; padding: 40px; color: #7f8c8d;">
+                        <h3>No Photos Found</h3>
+                        <p>No photos have been captured yet.</p>
+                    </div>
+                    )rawliteral";
+            } else {
+                // Сортируем файлы по имени (новые сначала)
+                std::sort(jpgFiles.begin(), jpgFiles.end(), [](const String& a, const String& b) {
+                    return a > b;
+                });
+                
+                // Ограничиваем количество отображаемых файлов
+                int maxFiles = 30; // Не более 30 фотографий для скорости загрузки
+                if (jpgFiles.size() > maxFiles) {
+                    jpgFiles.resize(maxFiles);
+                }
+                
+                // Создаем сетку карточек
+                content += "<div style=\"display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px;\">";
+                
+                for (const String& fileName : jpgFiles) {
+                    // Получаем размер файла для отображения
+                    File imgFile = SD_MMC.open(("/" + fileName).c_str(), FILE_READ);
+                    size_t fileSize = 0;
+                    if (imgFile) {
+                        fileSize = imgFile.size();
+                        imgFile.close();
+                    }
+                    
+                    // Форматируем размер
+                    String sizeStr;
+                    if (fileSize < 1024) {
+                        sizeStr = String(fileSize) + " B";
+                    } else if (fileSize < 1024 * 1024) {
+                        sizeStr = String(fileSize / 1024.0, 1) + " KB";
+                    } else {
+                        sizeStr = String(fileSize / (1024.0 * 1024.0), 1) + " MB";
+                    }
+                    
+                    content += "<div style=\"background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);\">";
+                    
+                    // Изображение с ссылкой на скачивание
+                    content += "<a href=\"/download_photo?file=" + fileName + "\" style=\"display: block;\">";
+                    content += "<div style=\"width: 100%; height: 180px; overflow: hidden;\">";
+                    content += "<img src=\"/download_photo?file=" + fileName + "\" alt=\"" + fileName + "\" ";
+                    content += "style=\"width: 100%; height: 100%; object-fit: cover; display: block;\">";
+                    content += "</div>";
+                    content += "</a>";
+                    
+                    // Информация о файле
+                    content += "<div style=\"padding: 12px;\">";
+                    
+                    // Имя файла (обрезаем если слишком длинное)
+                    String displayName = fileName;
+                    if (displayName.length() > 24) {
+                        displayName = displayName.substring(0, 21) + "...";
+                    }
+                    content += "<div style=\"font-weight: 600; color: #2c3e50; margin-bottom: 5px; font-size: 14px;\">" + displayName + "</div>";
+                    
+                    // Размер файла
+                    content += "<div style=\"font-size: 12px; color: #7f8c8d; display: flex; justify-content: space-between;\">";
+                    content += "<span>Size: " + sizeStr + "</span>";
+                    
+                    // Кнопка удаления
+                    content += "<button onclick=\"deletePhoto('" + fileName + "')\" ";
+                    content += "style=\"background: none; border: none; color: #e74c3c; cursor: pointer; font-size: 12px; padding: 0;\">";
+                    content += "<i class=\"fas fa-trash\"></i> Delete</button>";
+                    
+                    content += "</div>";
+                    content += "</div>";
+                    
+                    content += "</div>";
+                }
+                
+                content += "</div>";
+                
+                // Показываем количество файлов
+                content += "<div style=\"margin-top: 20px; padding: 10px; background: #f8f9fa; border-radius: 6px; text-align: center;\">";
+                content += "<span style=\"color: #7f8c8d; font-size: 14px;\">Showing " + String(fileCount) + " photos</span>";
+                content += "</div>";
+            }
+        }
+    }
+    
+    content += R"rawliteral(
+            </div>
+        </div>
+        
+        <script>
+            function deletePhoto(filename) {
+                if (!confirm('Delete ' + filename + '?')) {
+                    return;
+                }
+                
+                fetch('/delete_photo?file=' + encodeURIComponent(filename), {
+                    method: 'POST'
+                })
+                .then(response => {
+                    if (response.ok) {
+                        alert('Photo deleted');
+                        location.reload();
+                    } else {
+                        alert('Error deleting photo');
+                    }
+                })
+                .catch(error => {
+                    alert('Error: ' + error);
+                });
+            }
+            
+            // Предзагрузка изображений при наведении для лучшего UX
+            document.addEventListener('DOMContentLoaded', function() {
+                const images = document.querySelectorAll('#gallery img');
+                images.forEach(img => {
+                    // Добавляем эффект при наведении
+                    img.parentElement.parentElement.addEventListener('mouseenter', function() {
+                        this.style.transform = 'translateY(-4px)';
+                        this.style.boxShadow = '0 6px 12px rgba(0,0,0,0.15)';
+                    });
+                    
+                    img.parentElement.parentElement.addEventListener('mouseleave', function() {
+                        this.style.transform = 'translateY(0)';
+                        this.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
+                    });
+                });
+            });
+        </script>
+        
+        <style>
+            #gallery > div > div {
+                transition: all 0.2s ease;
+            }
+            
+            #gallery img {
+                transition: transform 0.3s ease;
+            }
+            
+            #gallery a:hover img {
+                transform: scale(1.05);
+            }
+            
+            @media (max-width: 768px) {
+                #gallery > div {
+                    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+                    gap: 15px;
+                }
+            }
+        </style>
+    )rawliteral";
+    
+    return getBaseTemplate("Photo Gallery", content);
 }
