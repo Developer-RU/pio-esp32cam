@@ -3,8 +3,8 @@
  * @brief Реализация управления камерой ESP32-CAM
  */
 
-#include "Camera/CameraController.hpp"
 #include <Arduino.h>
+#include "Camera/CameraController.hpp"
 
 // Внешние объявления
 extern bool camera_initialized;
