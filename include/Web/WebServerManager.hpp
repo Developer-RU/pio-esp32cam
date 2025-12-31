@@ -20,4 +20,7 @@ void handleSaveROI();
 void handleListPhotos();
 void handleDeletePhoto();
 
+void handleStream();
+void handleCapture();
+
 #endif // WEBSERVER_MANAGER_HPP

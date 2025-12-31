@@ -776,140 +776,364 @@ String getWifiSettingsPage()
     return getBaseTemplate("WiFi Settings", content);
 }
 
+// // // /**
+// // //  * @brief Генерация HTML страницы настроек ROI
+// // //  */
+// // // String getROISettingsPage()
+// // // {
+// // //     String content = R"rawliteral(
+// // //         <div class="card">
+// // //             <h2 class="card-title">ROI Settings</h2>
+            
+// // //             <div style="text-align: center; margin-bottom: 20px;">
+// // //                 <div style="display: inline-block; width: 200px; height: 150px; 
+// // //                     background: #ecf0f1; border: 2px solid #bdc3c7; border-radius: 8px;
+// // //                     position: relative; overflow: hidden;">
+// // //                     <div style="position: absolute; 
+// // //                         top: )rawliteral";
+// // //     content += String(settings.roi_y * 150 / 120);
+// // //     content += R"rawliteral(px;
+// // //                         left: )rawliteral";
+// // //     content += String(settings.roi_x * 200 / 160);
+// // //     content += R"rawliteral(px;
+// // //                         width: )rawliteral";
+// // //     content += String(settings.roi_width * 200 / 160);
+// // //     content += R"rawliteral(px;
+// // //                         height: )rawliteral";
+// // //     content += String(settings.roi_height * 150 / 120);
+// // //     content += R"rawliteral(px;
+// // //                         background: rgba(52, 152, 219, 0.3); border: 2px solid #3498db;">
+// // //                         <span style="position: absolute; top: 50%; left: 50%; 
+// // //                             transform: translate(-50%, -50%); color: #3498db; font-weight: bold;">
+// // //                             ROI
+// // //                         </span>
+// // //                     </div>
+// // //                 </div>
+// // //                 <p style="color: #7f8c8d; margin-top: 10px;">Image: 160x120 pixels</p>
+// // //             </div>
+            
+// // //             <form id="roiForm">
+// // //                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+// // //                     <div class="form-group">
+// // //                         <label class="form-label">Width (1-160)</label>
+// // //                         <input type="number" class="form-control" id="width" 
+// // //                                value=")rawliteral";
+// // //     content += String(settings.roi_width);
+// // //     content += R"rawliteral(" min="1" max="160">
+// // //                     </div>
+// // //                     <div class="form-group">
+// // //                         <label class="form-label">Height (1-120)</label>
+// // //                         <input type="number" class="form-control" id="height" 
+// // //                                value=")rawliteral";
+// // //     content += String(settings.roi_height);
+// // //     content += R"rawliteral(" min="1" max="120">
+// // //                     </div>
+// // //                 </div>
+                
+// // //                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+// // //                     <div class="form-group">
+// // //                         <label class="form-label">X Offset (0-160)</label>
+// // //                         <input type="number" class="form-control" id="x" 
+// // //                                value=")rawliteral";
+// // //     content += String(settings.roi_x);
+// // //     content += R"rawliteral(" min="0" max="160">
+// // //                     </div>
+// // //                     <div class="form-group">
+// // //                         <label class="form-label">Y Offset (0-120)</label>
+// // //                         <input type="number" class="form-control" id="y" 
+// // //                                value=")rawliteral";
+// // //     content += String(settings.roi_y);
+// // //     content += R"rawliteral(" min="0" max="120">
+// // //                     </div>
+// // //                 </div>
+                
+// // //                 <div style="background: #e8f6f3; padding: 15px; border-radius: 6px; margin-bottom: 20px;
+// // //                     border-left: 4px solid #1abc9c;">
+// // //                     <p style="color: #0d6256; margin: 0; font-size: 0.9rem;">
+// // //                         <strong>Current ROI:</strong> 
+// // //                         X=)rawliteral";
+// // //     content += String(settings.roi_x);
+// // //     content += R"rawliteral(, 
+// // //                         Y=)rawliteral";
+// // //     content += String(settings.roi_y);
+// // //     content += R"rawliteral(, 
+// // //                         W=)rawliteral";
+// // //     content += String(settings.roi_width);
+// // //     content += R"rawliteral(, 
+// // //                         H=)rawliteral";
+// // //     content += String(settings.roi_height);
+// // //     content += R"rawliteral(
+// // //                     </p>
+// // //                 </div>
+                
+// // //                 <button type="button" class="btn btn-block" onclick="saveROISettings()">
+// // //                     Save ROI Settings
+// // //                 </button>
+// // //             </form>
+// // //         </div>
+        
+// // //         <script>
+// // //             async function saveROISettings() {
+// // //                 const width = parseInt(document.getElementById('width').value);
+// // //                 const height = parseInt(document.getElementById('height').value);
+// // //                 const x = parseInt(document.getElementById('x').value);
+// // //                 const y = parseInt(document.getElementById('y').value);
+                
+// // //                 if (x + width > 160) {
+// // //                     showNotification('ROI exceeds image width!', 'error');
+// // //                     return;
+// // //                 }
+// // //                 if (y + height > 120) {
+// // //                     showNotification('ROI exceeds image height!', 'error');
+// // //                     return;
+// // //                 }
+                
+// // //                 const formData = new FormData();
+// // //                 formData.append('width', width);
+// // //                 formData.append('height', height);
+// // //                 formData.append('x', x);
+// // //                 formData.append('y', y);
+                
+// // //                 try {
+// // //                     const response = await fetch('/save_roi', { method: 'POST', body: formData });
+// // //                     if (response.ok) {
+// // //                         showNotification('ROI settings saved!', 'success');
+// // //                     } else {
+// // //                         showNotification('Error saving settings!', 'error');
+// // //                     }
+// // //                 } catch (error) {
+// // //                     showNotification('Error: ' + error, 'error');
+// // //                 }
+// // //             }
+// // //         </script>
+// // //     )rawliteral";
+    
+// // //     return getBaseTemplate("ROI Settings", content);
+// // // }
+
+
+
+
 /**
- * @brief Генерация HTML страницы настроек ROI
+ * @brief Генерация HTML страницы настроек ROI с видеопотоком
  */
 String getROISettingsPage()
 {
-    String content = R"rawliteral(
-        <div class="card">
-            <h2 class="card-title">ROI Settings</h2>
-            
-            <div style="text-align: center; margin-bottom: 20px;">
-                <div style="display: inline-block; width: 200px; height: 150px; 
-                    background: #ecf0f1; border: 2px solid #bdc3c7; border-radius: 8px;
-                    position: relative; overflow: hidden;">
-                    <div style="position: absolute; 
-                        top: )rawliteral";
-    content += String(settings.roi_y * 150 / 120);
-    content += R"rawliteral(px;
-                        left: )rawliteral";
-    content += String(settings.roi_x * 200 / 160);
-    content += R"rawliteral(px;
-                        width: )rawliteral";
-    content += String(settings.roi_width * 200 / 160);
-    content += R"rawliteral(px;
-                        height: )rawliteral";
-    content += String(settings.roi_height * 150 / 120);
-    content += R"rawliteral(px;
-                        background: rgba(52, 152, 219, 0.3); border: 2px solid #3498db;">
-                        <span style="position: absolute; top: 50%; left: 50%; 
-                            transform: translate(-50%, -50%); color: #3498db; font-weight: bold;">
-                            ROI
-                        </span>
-                    </div>
-                </div>
-                <p style="color: #7f8c8d; margin-top: 10px;">Image: 160x120 pixels</p>
-            </div>
-            
-            <form id="roiForm">
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
-                    <div class="form-group">
-                        <label class="form-label">Width (1-160)</label>
-                        <input type="number" class="form-control" id="width" 
-                               value=")rawliteral";
-    content += String(settings.roi_width);
-    content += R"rawliteral(" min="1" max="160">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Height (1-120)</label>
-                        <input type="number" class="form-control" id="height" 
-                               value=")rawliteral";
-    content += String(settings.roi_height);
-    content += R"rawliteral(" min="1" max="120">
-                    </div>
-                </div>
-                
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
-                    <div class="form-group">
-                        <label class="form-label">X Offset (0-160)</label>
-                        <input type="number" class="form-control" id="x" 
-                               value=")rawliteral";
-    content += String(settings.roi_x);
-    content += R"rawliteral(" min="0" max="160">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Y Offset (0-120)</label>
-                        <input type="number" class="form-control" id="y" 
-                               value=")rawliteral";
-    content += String(settings.roi_y);
-    content += R"rawliteral(" min="0" max="120">
-                    </div>
-                </div>
-                
-                <div style="background: #e8f6f3; padding: 15px; border-radius: 6px; margin-bottom: 20px;
-                    border-left: 4px solid #1abc9c;">
-                    <p style="color: #0d6256; margin: 0; font-size: 0.9rem;">
-                        <strong>Current ROI:</strong> 
-                        X=)rawliteral";
-    content += String(settings.roi_x);
-    content += R"rawliteral(, 
-                        Y=)rawliteral";
-    content += String(settings.roi_y);
-    content += R"rawliteral(, 
-                        W=)rawliteral";
-    content += String(settings.roi_width);
-    content += R"rawliteral(, 
-                        H=)rawliteral";
-    content += String(settings.roi_height);
-    content += R"rawliteral(
-                    </p>
-                </div>
-                
-                <button type="button" class="btn btn-block" onclick="saveROISettings()">
-                    Save ROI Settings
-                </button>
-            </form>
-        </div>
-        
-        <script>
-            async function saveROISettings() {
-                const width = parseInt(document.getElementById('width').value);
-                const height = parseInt(document.getElementById('height').value);
-                const x = parseInt(document.getElementById('x').value);
-                const y = parseInt(document.getElementById('y').value);
-                
-                if (x + width > 160) {
-                    showNotification('ROI exceeds image width!', 'error');
-                    return;
-                }
-                if (y + height > 120) {
-                    showNotification('ROI exceeds image height!', 'error');
-                    return;
-                }
-                
-                const formData = new FormData();
-                formData.append('width', width);
-                formData.append('height', height);
-                formData.append('x', x);
-                formData.append('y', y);
-                
-                try {
-                    const response = await fetch('/save_roi', { method: 'POST', body: formData });
-                    if (response.ok) {
-                        showNotification('ROI settings saved!', 'success');
-                    } else {
-                        showNotification('Error saving settings!', 'error');
-                    }
-                } catch (error) {
-                    showNotification('Error: ' + error, 'error');
-                }
-            }
-        </script>
-    )rawliteral";
+    String content = "<div class=\"card\">";
+    content += "<h2 class=\"card-title\">ROI Settings</h2>";
+    
+    // Видеопоток
+    content += "<div style=\"margin-bottom: 30px; text-align: center;\">";
+    content += "<h3 style=\"color: #2c3e50; margin-bottom: 15px;\">";
+    content += "<i class=\"fas fa-video\"></i> Live Camera Preview";
+    content += "</h3>";
+    content += "<div style=\"position: relative; display: inline-block; border: 3px solid #3498db; border-radius: 8px; overflow: hidden;\">";
+    content += "<div id=\"videoContainer\" style=\"width: 320px; height: 240px; background: #000; position: relative;\">";
+    content += "<img id=\"videoStream\" src=\"/stream\" style=\"width: 100%; height: 100%; object-fit: contain; display: block;\">";
+    
+    // ROI overlay
+    content += "<div id=\"roiOverlay\" style=\"position: absolute; ";
+    content += "top: " + String(settings.roi_y * 240 / 120) + "px; ";
+    content += "left: " + String(settings.roi_x * 320 / 160) + "px; ";
+    content += "width: " + String(settings.roi_width * 320 / 160) + "px; ";
+    content += "height: " + String(settings.roi_height * 240 / 120) + "px; ";
+    content += "border: 2px solid #f39c12; background: rgba(243, 156, 18, 0.2); box-sizing: border-box; pointer-events: none;\">";
+    content += "<div style=\"position: absolute; top: -25px; left: 0; background: #f39c12; color: white; padding: 2px 8px; border-radius: 3px; font-size: 12px; font-weight: 600;\">ROI</div>";
+    content += "</div>";
+    content += "</div>";
+    
+    // Camera status
+    content += "<div style=\"position: absolute; top: 10px; right: 10px; z-index: 10;\">";
+    content += "<div id=\"cameraStatus\" style=\"background: " + String(camera_initialized ? "rgba(46, 204, 113, 0.9)" : "rgba(231, 76, 60, 0.9)") + "; ";
+    content += "color: white; padding: 4px 10px; border-radius: 15px; font-size: 12px; font-weight: 600;\">";
+    content += "<i class=\"fas fa-camera\"></i> " + String(camera_initialized ? "ACTIVE" : "INACTIVE");
+    content += "</div>";
+    content += "</div>";
+    
+    // Control buttons
+    content += "<div style=\"position: absolute; bottom: 10px; left: 0; right: 0; display: flex; justify-content: center; gap: 10px; z-index: 10;\">";
+    content += "<button id=\"playBtn\" onclick=\"toggleStream()\" style=\"background: rgba(52, 152, 219, 0.9); color: white; border: none; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; font-size: 16px;\">";
+    content += "<i class=\"fas fa-play\"></i></button>";
+    content += "<button onclick=\"captureFrame()\" style=\"background: rgba(46, 204, 113, 0.9); color: white; border: none; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; font-size: 16px;\">";
+    content += "<i class=\"fas fa-camera\"></i></button>";
+    content += "<button onclick=\"refreshStream()\" style=\"background: rgba(155, 89, 182, 0.9); color: white; border: none; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; font-size: 16px;\">";
+    content += "<i class=\"fas fa-sync-alt\"></i></button>";
+    content += "</div>";
+    content += "</div>";
+    
+    // Video info
+    content += "<div style=\"margin-top: 15px; display: flex; justify-content: center; gap: 20px;\">";
+    content += "<div style=\"text-align: center;\"><div style=\"font-size: 12px; color: #7f8c8d;\">Video Size</div><div style=\"font-weight: 600; color: #2c3e50;\">320 × 240</div></div>";
+    content += "<div style=\"text-align: center;\"><div style=\"font-size: 12px; color: #7f8c8d;\">Detection Size</div><div style=\"font-weight: 600; color: #2c3e50;\">160 × 120</div></div>";
+    content += "<div style=\"text-align: center;\"><div style=\"font-size: 12px; color: #7f8c8d;\">Scale Factor</div><div style=\"font-weight: 600; color: #2c3e50;\">2×</div></div>";
+    content += "</div>";
+    
+    content += "<p style=\"color: #7f8c8d; font-size: 14px; margin-top: 15px;\">";
+    content += "<i class=\"fas fa-info-circle\"></i> ROI is scaled 2× for display. Actual detection uses 160×120 resolution.";
+    content += "</p>";
+    content += "</div>";
+    
+    // ROI Configuration Form
+    content += "<div style=\"background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 25px;\">";
+    content += "<h3 style=\"color: #2c3e50; margin-bottom: 15px;\"><i class=\"fas fa-sliders-h\"></i> ROI Configuration</h3>";
+    
+    content += "<form id=\"roiForm\">";
+    content += "<div style=\"display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;\">";
+    
+    // Width
+    content += "<div class=\"form-group\">";
+    content += "<label class=\"form-label\">Width (1-160)</label>";
+    content += "<input type=\"number\" class=\"form-control\" id=\"width\" value=\"" + String(settings.roi_width) + "\" min=\"1\" max=\"160\">";
+    content += "</div>";
+    
+    // Height
+    content += "<div class=\"form-group\">";
+    content += "<label class=\"form-label\">Height (1-120)</label>";
+    content += "<input type=\"number\" class=\"form-control\" id=\"height\" value=\"" + String(settings.roi_height) + "\" min=\"1\" max=\"120\">";
+    content += "</div>";
+    content += "</div>";
+    
+    content += "<div style=\"display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;\">";
+    
+    // X Offset
+    content += "<div class=\"form-group\">";
+    content += "<label class=\"form-label\">X Offset (0-160)</label>";
+    content += "<input type=\"number\" class=\"form-control\" id=\"x\" value=\"" + String(settings.roi_x) + "\" min=\"0\" max=\"160\">";
+    content += "</div>";
+    
+    // Y Offset
+    content += "<div class=\"form-group\">";
+    content += "<label class=\"form-label\">Y Offset (0-120)</label>";
+    content += "<input type=\"number\" class=\"form-control\" id=\"y\" value=\"" + String(settings.roi_y) + "\" min=\"0\" max=\"120\">";
+    content += "</div>";
+    content += "</div>";
+    
+    // Current ROI info
+    content += "<div style=\"background: #e8f6f3; padding: 15px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #1abc9c;\">";
+    content += "<p style=\"color: #0d6256; margin: 0; font-size: 0.9rem;\">";
+    content += "<strong>Current ROI:</strong> X=" + String(settings.roi_x) + ", Y=" + String(settings.roi_y);
+    content += ", W=" + String(settings.roi_width) + ", H=" + String(settings.roi_height);
+    content += "</p>";
+    content += "</div>";
+    
+    // Save button
+    content += "<button type=\"button\" class=\"btn btn-block\" onclick=\"saveROISettings()\">Save ROI Settings</button>";
+    content += "</form>";
+    content += "</div>";
+    
+    // Best practices
+    content += "<div style=\"background: #e8f4fc; padding: 20px; border-radius: 8px;\">";
+    content += "<h3 style=\"color: #3498db; margin-bottom: 15px;\"><i class=\"fas fa-lightbulb\"></i> Best Practices</h3>";
+    content += "<ul style=\"color: #7f8c8d; padding-left: 20px;\">";
+    content += "<li>Set ROI on the area where cars are most likely to appear</li>";
+    content += "<li>Smaller ROI = faster processing (recommended: 40-80px width)</li>";
+    content += "<li>For straight roads, center the ROI</li>";
+    content += "<li>Make sure ROI stays within image boundaries (160x120)</li>";
+    content += "</ul>";
+    content += "</div>";
+    
+    content += "</div>"; // Close card
+    
+    // JavaScript
+    content += "<script>";
+    content += "async function saveROISettings() {";
+    content += "const width = parseInt(document.getElementById('width').value);";
+    content += "const height = parseInt(document.getElementById('height').value);";
+    content += "const x = parseInt(document.getElementById('x').value);";
+    content += "const y = parseInt(document.getElementById('y').value);";
+    
+    content += "if (x + width > 160) {";
+    content += "alert('ROI exceeds image width!');";
+    content += "return;";
+    content += "}";
+    
+    content += "if (y + height > 120) {";
+    content += "alert('ROI exceeds image height!');";
+    content += "return;";
+    content += "}";
+    
+    content += "const formData = new FormData();";
+    content += "formData.append('width', width);";
+    content += "formData.append('height', height);";
+    content += "formData.append('x', x);";
+    content += "formData.append('y', y);";
+    
+    content += "try {";
+    content += "const response = await fetch('/save_roi', { method: 'POST', body: formData });";
+    content += "if (response.ok) {";
+    content += "alert('ROI settings saved!');";
+    content += "location.reload();";
+    content += "} else {";
+    content += "alert('Error saving settings!');";
+    content += "}";
+    content += "} catch (error) {";
+    content += "alert('Error: ' + error);";
+    content += "}";
+    content += "}";
+    
+    // Video stream controls
+    content += "let streamActive = true;";
+    content += "function toggleStream() {";
+    content += "const videoStream = document.getElementById('videoStream');";
+    content += "const playBtn = document.getElementById('playBtn');";
+    content += "if (streamActive) {";
+    content += "videoStream.src = '';";
+    content += "playBtn.innerHTML = '<i class=\"fas fa-play\"></i>';";
+    content += "playBtn.style.background = 'rgba(46, 204, 113, 0.9)';";
+    content += "} else {";
+    content += "videoStream.src = '/stream?t=' + new Date().getTime();";
+    content += "playBtn.innerHTML = '<i class=\"fas fa-pause\"></i>';";
+    content += "playBtn.style.background = 'rgba(52, 152, 219, 0.9)';";
+    content += "}";
+    content += "streamActive = !streamActive;";
+    content += "}";
+    
+    content += "function captureFrame() {";
+    content += "const videoStream = document.getElementById('videoStream');";
+    content += "videoStream.src = '/capture?t=' + new Date().getTime();";
+    content += "setTimeout(() => {";
+    content += "if (streamActive) { videoStream.src = '/stream?t=' + new Date().getTime(); }";
+    content += "}, 1000);";
+    content += "}";
+    
+    content += "function refreshStream() {";
+    content += "const videoStream = document.getElementById('videoStream');";
+    content += "if (streamActive) { videoStream.src = '/stream?t=' + new Date().getTime(); }";
+    content += "}";
+    
+    // Update ROI display when inputs change
+    content += "function updateROIDisplay() {";
+    content += "const width = parseInt(document.getElementById('width').value) || 0;";
+    content += "const height = parseInt(document.getElementById('height').value) || 0;";
+    content += "const x = parseInt(document.getElementById('x').value) || 0;";
+    content += "const y = parseInt(document.getElementById('y').value) || 0;";
+    content += "const roiOverlay = document.getElementById('roiOverlay');";
+    content += "if (roiOverlay) {";
+    content += "roiOverlay.style.left = (x * 2) + 'px';"; // 320/160 = 2
+    content += "roiOverlay.style.top = (y * 2) + 'px';"; // 240/120 = 2
+    content += "roiOverlay.style.width = (width * 2) + 'px';";
+    content += "roiOverlay.style.height = (height * 2) + 'px';";
+    content += "}";
+    content += "}";
+    
+    // Add event listeners to inputs
+    content += "document.addEventListener('DOMContentLoaded', function() {";
+    content += "['width', 'height', 'x', 'y'].forEach(id => {";
+    content += "document.getElementById(id).addEventListener('input', updateROIDisplay);";
+    content += "});";
+    content += "});";
+    
+    content += "</script>";
     
     return getBaseTemplate("ROI Settings", content);
 }
+
+
+
+
+
+
+
 
 // // // /**
 // // //  * @brief Генерация HTML страницы со списком фото
